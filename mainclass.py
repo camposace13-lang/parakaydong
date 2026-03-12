@@ -19,6 +19,12 @@ class Restaurant:
             customer.pay(price)
         else:
             print(f"Sorry, {item_name} is not on the menu.")
+    
+    def branch_one(self):
+        print(f"Welcome to {self.name} - Branch One!")
+        self.add_menu_item("Italian", 5)
+        self.add_menu_item("Hawaian", 2)
+        self.add_menu_item("Filipino style", 1)
 class Costumer:
     def __init__(self, name, age):
         self.name = name
