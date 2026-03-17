@@ -1,16 +1,9 @@
 import time
 
-
-# ═════════════════════════════════════════════
-# RESTAURANT CLOCK
-# 1 real second = 6 game minutes (360x speed)
-# Full 24-hr game day = 4 real minutes
-# ═════════════════════════════════════════════
 class RestaurantClock:
     def __init__(self, start_hour=7):
         self.time_dilation = 360
         self.start_real_time = time.time()
-        # Offset so the clock starts at start_hour instead of 00:00
         self._start_offset_seconds = start_hour * 3600
 
     def get_game_time(self):

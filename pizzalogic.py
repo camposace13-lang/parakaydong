@@ -1,208 +1,487 @@
 # ═════════════════════════════════════════════
-# PIZZALOGIC.PY — Game Logic Functions
-# No classes here. All classes live in lastday.py
-# This module handles: branch rules, customer
-# routing, and the main game loop simulation.
+# PIZZALOGIC.PY — Single terminal, 3-role game
+# Waiter → Chef → Cashier per customer group
 # ═════════════════════════════════════════════
 
-import time
-import sys
-import random
+import os, sys, time, random
 
 # ─────────────────────────────────────────────
-# BRANCH SCHEDULE RULES
+# DIFFICULTY
 # ─────────────────────────────────────────────
+DIFFICULTY = {
+    1: {"label": "⭐  EASY",      "num_choices": 3, "arrival_gap": 5},
+    2: {"label": "⭐⭐  MEDIUM",   "num_choices": 4, "arrival_gap": 4},
+    3: {"label": "⭐⭐⭐  HARD",   "num_choices": 5, "arrival_gap": 3},
+}
+PIZZA_PRICES = {
+    "Margherita": 8,  "Pepperoni": 10, "Hawaiian": 9,
+    "Veggie": 7,      "BBQ Chicken": 11, "Supreme": 12,
+}
+CUSTOMER_NAMES = ["Luigi","Yoshi","Koopa","Shy Guy","Toad Jr.",
+                  "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
+VIP_NAMES      = ["Peach","Daisy","Rosalina","Pauline"]
+ALL_PIZZAS     = list(PIZZA_PRICES.keys())
 
-def is_branch_open(branch_name, hour):
-    """
-    Area 1  → open 24/7
-    Area F  → open 10:00 - 21:00
-    Area G  → open 10:00 - 21:00
-    """
-    if "Area 1" in branch_name:
-        return True
-    if "Area F" in branch_name or "Area G" in branch_name:
-        return 10 <= hour < 21
-    return False
+# Table definitions: table_number → capacity
+TABLES = {1: 2, 2: 4, 3: 5}
 
-
-def get_open_branches(branches, hour):
-    """Return list of branches that are currently open."""
-    return [b for b in branches if is_branch_open(b.name, hour)]
+def get_diff(day):
+    return DIFFICULTY[min(day, 3)]
 
 
 # ─────────────────────────────────────────────
-# CUSTOMER ROUTING
+# TERMINAL HELPERS
 # ─────────────────────────────────────────────
+def clear():
+    os.system("cls" if os.name == "nt" else "clear")
 
-def route_customer(customer, open_branches):
-    """
-    Send customer to a random open branch.
-    VIP customers prefer Area 1 if it's open.
-    Returns (branch, message) tuple.
-    """
-    if not open_branches:
-        return None, f"{customer.name_tag.display()} found no open branches and left."
+def getch():
+    """Single keypress — no Enter needed."""
+    try:
+        import tty, termios
+        fd  = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            return sys.stdin.read(1).lower()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    except Exception:
+        return input("  > ").strip()[:1].lower()
 
-    role = customer.name_tag.role
-    if role == "VipCustomer":
-        vip_pref = [b for b in open_branches if "Area 1" in b.name]
-        chosen = vip_pref[0] if vip_pref else random.choice(open_branches)
+def divider(char="═", width=55):
+    print(f"  {char*width}")
+
+def header(role_label, day, diff, score, served, clock_str, phase):
+    clear()
+    divider()
+    print(f"  🍕  PIZZA RESTAURANT  |  {clock_str}  {phase}")
+    print(f"  📅  Day {day}  {diff['label']}  |  ⭐ Score: {score}  |  👥 Served: {served}")
+    divider()
+    print(f"\n  👤  Current Role: {role_label}\n")
+
+def show_tables(occupied):
+    """
+    occupied = dict {table_number: group_size or 0 if empty}
+    """
+    print(f"  🪑  Tables:")
+    for tnum, cap in TABLES.items():
+        seats_taken = occupied.get(tnum, 0)
+        status = f"occupied ({seats_taken}/{cap})" if seats_taken > 0 else "empty"
+        avail  = "❌" if seats_taken > 0 else "✅"
+        print(f"     [{tnum}] Table {tnum}  —  cap {cap}  {avail}  {status}")
+    print()
+
+def show_group(cust):
+    icon  = "👑" if cust["role"] == "VipCustomer" else "🧑"
+    group = cust["group_size"]
+    print(f"  {icon}  Group leader : {cust['name']}  [{cust['role']}]")
+    print(f"     Group size  : {group} person{'s' if group > 1 else ''}")
+    print(f"     Order       : {cust['pizza']}  x{group}")
+    print(f"     Price each  : ${cust['unit_price']}")
+    print(f"     Total bill  : ${cust['total_price']}")
+    print()
+
+def score_for_speed(elapsed, base=5, max_bonus=5, time_limit=6):
+    """Under 1s = full bonus, ~3s = half, 6s+ = none."""
+    ratio = 1.0 if elapsed <= 1 else max(0.0, 1 - ((elapsed - 1) / (time_limit - 1)))
+    bonus = int(max_bonus * ratio)
+    return base + bonus, bonus
+
+def make_choices(correct, all_options, num):
+    wrong   = [x for x in all_options if x != correct]
+    random.shuffle(wrong)
+    options = wrong[:num - 1] + [correct]
+    random.shuffle(options)
+    return options
+
+def print_choices(options):
+    divider("─")
+    for i, opt in enumerate(options):
+        print(f"  [{i+1}]  {opt}")
+    divider("─")
+    print()
+
+
+# ─────────────────────────────────────────────
+# CUSTOMER GROUP GENERATOR
+# ─────────────────────────────────────────────
+def make_customer(menu):
+    is_vip     = random.random() < 0.2
+    name       = random.choice(VIP_NAMES if is_vip else CUSTOMER_NAMES)
+    pizza      = random.choice(menu)
+    unit_price = PIZZA_PRICES.get(pizza, 10)
+    # group size: 1 up to max table capacity
+    max_cap    = max(TABLES.values())
+    group_size = random.randint(1, max_cap)
+    total      = unit_price * group_size
+    paid       = total + random.choice([0, 1, 2, 5, 10])
+    return {
+        "name":        name,
+        "role":        "VipCustomer" if is_vip else "Customer",
+        "pizza":       pizza,
+        "group_size":  group_size,
+        "unit_price":  unit_price,
+        "total_price": total,
+        "paid":        paid,
+        "change":      paid - total,
+        "table":       None,   # assigned by waiter
+    }
+
+
+# ─────────────────────────────────────────────
+# STAGE 1 — WAITER: choose table & seat group
+# ─────────────────────────────────────────────
+def stage_waiter_seat(cust, waiter, day, diff, score, served,
+                      clock_str, phase, occupied):
+    while True:
+        header(f"🍽️  WAITER  —  {waiter}", day, diff, score, served, clock_str, phase)
+        title = "Ma'am" if cust["role"] == "VipCustomer" else "Sir"
+        group = cust["group_size"]
+
+        print(f"  🚶 Group arrived! Leader: {cust['name']}  "
+              f"({group} person{'s' if group > 1 else ''})")
+        print(f"  [{waiter}]: Welcome to Area 1 Pizzeria, "
+              f"{title} {cust['name']}!\n")
+        print(f"  They want: {cust['pizza']} x{group}\n")
+        show_tables(occupied)
+
+        # find tables that can fit the group
+        available = {n: c for n, c in TABLES.items()
+                     if occupied.get(n, 0) == 0 and c >= group}
+
+        if not available:
+            print(f"  ⚠️  No table available for a group of {group}! "
+                  f"They are waiting...\n")
+            print(f"  Press any key to check again, or [Q] to quit.")
+            k = getch()
+            if k == "q":
+                return "QUIT", score, occupied
+            continue
+
+        print(f"  Group of {group} — pick an available table "
+              f"(must fit {group}+):\n")
+        # show only valid choices
+        valid_keys = []
+        for tnum, cap in TABLES.items():
+            fits   = cap >= group
+            empty  = occupied.get(tnum, 0) == 0
+            marker = "✅ pick" if (fits and empty) else \
+                     ("❌ full" if not empty else "❌ too small")
+            print(f"  [{tnum}]  Table {tnum}  (cap {cap})  —  {marker}")
+            if fits and empty:
+                valid_keys.append(str(tnum))
+        print()
+        print(f"  Press [{'/'.join(valid_keys)}] to seat them.")
+
+        t_start = time.time()
+        k = getch()
+        if k == "q":
+            return "QUIT", score, occupied
+        if k not in valid_keys:
+            # check if it's a real table number (just wrong size/full)
+            if k in [str(n) for n in TABLES.keys()]:
+                score = max(0, score - 15)
+                print(f"\n  ❌  Wrong table! That table can't fit this group. (-15 pts)\n")
+            else:
+                print(f"\n  ⚠️  Invalid key. Press a table number.\n")
+            time.sleep(1.5)
+            continue
+
+        # seat them
+        chosen_table = int(k)
+        occupied[chosen_table] = group
+        cust["table"] = chosen_table
+
+        elapsed = time.time() - t_start
+        pts, bonus = score_for_speed(elapsed)
+        score += pts
+        bonus_str = f" +{bonus} speed bonus!" if bonus > 0 else ""
+        print(f"\n  ✅  Group of {group} seated at Table {chosen_table}! "
+              f"(+{pts} pts{bonus_str})\n")
+        time.sleep(1)
+        return "OK", score, occupied
+
+
+# ─────────────────────────────────────────────
+# STAGE 2 — CHEF: cook the correct pizza
+# ─────────────────────────────────────────────
+def stage_chef_cook(cust, chef, day, diff, score, served, clock_str, phase):
+    num     = diff["num_choices"]
+    group   = cust["group_size"]
+    options = make_choices(cust["pizza"], ALL_PIZZAS, num)
+    correct_idx = options.index(cust["pizza"])
+    t_start = time.time()
+
+    while True:
+        header(f"👨‍🍳  CHEF  —  {chef}", day, diff, score, served, clock_str, phase)
+        show_group(cust)
+        print(f"  🍳  Order in!  Cook: {cust['pizza']} x{group}\n")
+        print_choices(options)
+        print(f"  Press the number of the correct pizza.")
+
+        k = getch()
+        if k == "q":
+            return "QUIT", score
+        try:
+            chosen = int(k) - 1
+        except ValueError:
+            continue
+        if chosen < 0 or chosen >= len(options):
+            continue
+
+        if chosen == correct_idx:
+            elapsed = time.time() - t_start
+            pts, bonus = score_for_speed(elapsed)
+            score += pts
+            bonus_str = f" +{bonus} speed bonus!" if bonus > 0 else ""
+            print(f"\n  ✅  Correct! {cust['pizza']} x{group} is cooking! "
+                  f"(+{pts} pts{bonus_str})\n")
+            time.sleep(1.5)
+            return "OK", score
+        else:
+            score = max(0, score - 15)
+            print(f"\n  ❌  Wrong pizza! {cust['name']}'s group got the "
+                  f"wrong order and LEFT! (-15 pts)\n")
+            time.sleep(2)
+            return "LEFT", score
+
+
+# ─────────────────────────────────────────────
+# STAGE 3 — WAITER: serve the food
+# ─────────────────────────────────────────────
+def stage_waiter_serve(cust, waiter, day, diff, score, served, clock_str, phase):
+    header(f"🍽️  WAITER  —  {waiter}", day, diff, score, served, clock_str, phase)
+    show_group(cust)
+    print(f"  🍕  {cust['pizza']} x{cust['group_size']} is ready!")
+    print(f"  Press [S] to serve Table {cust['table']}.")
+    t_start = time.time()
+    while True:
+        k = getch()
+        if k == "s":
+            elapsed = time.time() - t_start
+            pts, bonus = score_for_speed(elapsed)
+            score += pts
+            bonus_str = f" +{bonus} speed bonus!" if bonus > 0 else ""
+            print(f"\n  ✅  Served to Table {cust['table']}! "
+                  f"(+{pts} pts{bonus_str})\n")
+            time.sleep(1.5)
+            return "OK", score
+        elif k == "q":
+            return "QUIT", score
+
+
+# ─────────────────────────────────────────────
+# STAGE 4 — CASHIER: collect & give change
+# ─────────────────────────────────────────────
+def stage_cashier_pay(cust, cashier, day, diff, score, served, clock_str, phase):
+    total  = cust["total_price"]
+    paid   = cust["paid"]
+    change = cust["change"]
+    group  = cust["group_size"]
+
+    # Step A — press G to collect
+    header(f"💰  CASHIER  —  {cashier}", day, diff, score, served, clock_str, phase)
+    show_group(cust)
+    print(f"  💵  Table {cust['table']} finished eating!")
+    print(f"     {cust['pizza']} x{group} @ ${cust['unit_price']} each")
+    print(f"     Total bill : ${total}")
+    print(f"     Paid       : ${paid}")
+    print(f"\n  Press [G] to collect payment.")
+    while True:
+        k = getch()
+        if k == "g":
+            print(f"\n  ✅  Payment collected!")
+            print(f"  💵  Received : ${paid}")
+            print(f"  🧾  Bill was : ${total}\n")
+            time.sleep(1.5)
+            break
+        elif k == "q":
+            return "QUIT", score
+
+    # Step B — give correct change (1 correct, 2 wrong)
+    header(f"💰  CASHIER  —  {cashier}", day, diff, score, served, clock_str, phase)
+    show_group(cust)
+    print(f"  💵  Total bill: ${total}  |  Paid: ${paid}\n")
+
+    t_start = time.time()
+    if change == 0:
+        options     = ["No change — $0"]
+        correct_idx = 0
     else:
-        chosen = random.choice(open_branches)
+        wrong = set()
+        attempts = 0
+        while len(wrong) < 2 and attempts < 50:
+            attempts += 1
+            fake = change + random.choice([-3, -2, -1, 1, 2, 3, 5])
+            if fake >= 0 and fake != change:
+                wrong.add(fake)
+        options = [f"${x}" for x in list(wrong)] + [f"${change}"]
+        random.shuffle(options)
+        correct_idx = options.index(f"${change}")
 
-    available_tables = [t for t in chosen.tables if t.is_available]
-    if not available_tables:
-        return chosen, f"{customer.name_tag.display()} ➜ {chosen.name} (full, waiting outside)"
+    print(f"  Pick the correct change to give back:\n")
+    print_choices(options)
+    print(f"  Press the number of the correct change.")
 
-    table = random.choice(available_tables)
-    msg = table.seat_customer(customer)
-    return chosen, msg
+    while True:
+        k = getch()
+        if k == "q":
+            return "QUIT", score
+        try:
+            chosen = int(k) - 1
+        except ValueError:
+            continue
+        if chosen < 0 or chosen >= len(options):
+            continue
+
+        if chosen == correct_idx:
+            elapsed   = time.time() - t_start
+            pts, bonus = score_for_speed(elapsed)
+            score    += pts
+            bonus_str = f" +{bonus} speed bonus!" if bonus > 0 else ""
+            tip       = random.randint(1, 10) if cust["role"] == "VipCustomer" \
+                        else random.randint(1, 5)
+            tip_label = "VIP tip" if cust["role"] == "VipCustomer" else "tip"
+            score    += tip
+            print(f"\n  ✅  Correct change! (+{pts} pts{bonus_str})")
+            print(f"  💰  {cust['name']} left a {tip_label}: +{tip} pts\n")
+        else:
+            score = max(0, score - 15)
+            print(f"\n  ❌  Wrong change! Correct was "
+                  f"{options[correct_idx]}. (-15 pts)\n")
+        time.sleep(1.5)
+        return "OK", score
 
 
 # ─────────────────────────────────────────────
-# STAFF ACTIVITY FEED
+# DAY SUMMARY
 # ─────────────────────────────────────────────
-
-def print_branch_activity(branch, clock_str, hour):
-    """Print a live activity line for every staff member and customer count."""
-    open_flag = "🟢 OPEN  " if is_branch_open(branch.name, hour) else "🔴 CLOSED"
-    seated_total = sum(len(t.seated) for t in branch.tables)
-
-    print(f"\n  ┌─ {clock_str} | {branch.name} [{open_flag}]")
-
-    if is_branch_open(branch.name, hour):
-        for member in branch.staff:
-            duty = member.perform_primary_duty()
-            print(f"  │  ✔ {duty}")
-        print(f"  │  👥 Customers inside: {seated_total}")
-    else:
-        print(f"  │  💤 All staff resting. No customers.")
-
-    print(f"  └{'─'*45}")
-
-
-# ─────────────────────────────────────────────
-# BRANCH STATUS BANNER
-# ─────────────────────────────────────────────
-
-def print_branch_status(branches, hour):
-    print(f"\n  {'─'*51}")
-    for branch in branches:
-        open_flag = "🟢 OPEN  " if is_branch_open(branch.name, hour) else "🔴 CLOSED"
-        seated_total = sum(len(t.seated) for t in branch.tables)
-        capacity_total = sum(t.capacity for t in branch.tables)
-        print(f"  {open_flag} | {branch.name:<22} | 👥 {seated_total}/{capacity_total} seated")
-    print(f"  {'─'*51}")
+def day_summary(day, diff, score, served, total_collected):
+    clear()
+    divider()
+    print(f"  🌙  END OF DAY {day} SHIFT  —  {diff['label']}")
+    divider("─")
+    print(f"  Groups served    : {served}")
+    print(f"  Money collected  : ${total_collected}")
+    print(f"  Total score      : {score} pts")
+    if day < 3:
+        nd = DIFFICULTY[day + 1]
+        print(f"\n  ⚠️  Tomorrow: {nd['label']}")
+        print(f"  Choices: {nd['num_choices']}  |  "
+              f"Arrival gap: {nd['arrival_gap']}s")
+    divider()
+    print(f"\n  Rest up! Press ENTER to start Day {day + 1} shift...")
+    input()
 
 
 # ─────────────────────────────────────────────
 # MAIN GAME LOOP
 # ─────────────────────────────────────────────
+def run_game(branches, clock):
+    menu = next(b.menu for b in branches if "Area 1" in b.name)
 
-def run_game(branches, customers, clock):
-    """
-    Main game loop. Runs until a full 24-hr game day is complete.
-    - Clock starts at 07:00
-    - Area F + Area G open at 10:00, close at 21:00
-    - Area 1 is open 24/7
-    - Every tick: prints what each branch/staff is doing
-    - Customers arrive at open branches continuously
-    """
+    clear()
+    divider()
+    print(f"  🍕  PIZZA RESTAURANT SIMULATOR")
+    divider()
+    print(f"  Tables:  Table 1 (2 seats)  |  "
+          f"Table 2 (4 seats)  |  Table 3 (5 seats)")
+    print(f"\n  You play all 3 roles per group:")
+    print(f"  🍽️  Waiter  → [1/2/3] pick table, [T] seat group")
+    print(f"  👨‍🍳  Chef    → [1/2/3] correct pizza (wrong = group leaves)")
+    print(f"  💰  Cashier → [G] collect, [1/2/3] correct change")
+    print(f"\n  Speed bonus: <1s = full  |  ~3s = half  |  6s+ = none")
+    print(f"  Wrong key  : -15 pts")
+    print(f"  Tip: Regular 1–5 pts  |  VIP 1–10 pts")
+    print(f"  Day advances every 5 groups served.")
+    divider()
 
-    print(f"\n  {'═'*51}")
-    print(f"  🍕  PIZZA RESTAURANT SIMULATION STARTED")
-    print(f"  {'═'*51}")
-    for b in branches:
-        tag = "24/7" if "Area 1" in b.name else "10:00 - 21:00"
-        print(f"  • {b.name:<25} Hours: {tag}")
-        print(f"    Menu  : {', '.join(b.menu)}")
-        staff_names = ", ".join(s.name_tag.name for s in b.staff)
-        print(f"    Staff : {staff_names}")
-    print(f"  {'═'*51}\n")
-    time.sleep(1.5)
+    print(f"\n  Waiter name  : ", end="", flush=True)
+    waiter  = input().strip() or "Alex"
+    print(f"  Chef name    : ", end="", flush=True)
+    chef    = input().strip() or "Mario"
+    print(f"  Cashier name : ", end="", flush=True)
+    cashier = input().strip() or "Birdo"
 
-    last_open_set       = set()
-    last_phase          = None
-    customer_index      = 0
-    tick                = 0
+    print(f"\n  Press ENTER to start!\n")
+    input()
 
-    try:
-        while True:
-            h, m = clock.get_game_time()
-            clock_str   = f"🕐 {h:02d}:{m:02d}"
-            phase       = clock.get_phase(h)
-            current_open = set(b.name for b in get_open_branches(branches, h))
+    score           = 0
+    served          = 0
+    day             = 1
+    total_collected = 0              # total money received from customers
+    occupied        = {1: 0, 2: 0, 3: 0}   # table_number → group_size seated (0 = empty)
 
-            # ── Announce phase / open / close changes ──
-            if phase != last_phase:
-                print(f"\n\n  {'━'*51}")
-                print(f"  ⏰  {clock_str}  —  {phase}")
-                print(f"  {'━'*51}")
-                last_phase = phase
+    while True:
+        diff      = get_diff(day)
+        clock_str = clock.time_str()
+        h, _      = clock.get_game_time()
+        phase     = clock.get_phase(h)
 
-            for branch in branches:
-                just_opened = branch.name in current_open and branch.name not in last_open_set
-                just_closed = branch.name not in current_open and branch.name in last_open_set
-                if just_opened:
-                    print(f"\n  🟢 {branch.name} just OPENED! Staff on duty:")
-                    for s in branch.staff:
-                        print(f"     → {s.perform_primary_duty()}")
-                elif just_closed:
-                    print(f"\n  🔴 {branch.name} just CLOSED. Clearing customers.")
-                    for table in branch.tables:
-                        table.seated.clear()
+        # arrival gap screen
+        clear()
+        divider()
+        print(f"  🍕  PIZZA RESTAURANT  |  {clock_str}  {phase}")
+        print(f"  📅  Day {day}  {diff['label']}  |  "
+              f"⭐ Score: {score}  |  👥 Served: {served}")
+        divider()
+        show_tables(occupied)
+        print(f"  ⏳  Next group arriving in {diff['arrival_gap']} seconds...")
+        print(f"  (Press Q anytime during an action to quit)\n")
+        time.sleep(diff["arrival_gap"])
 
-            last_open_set = current_open
+        cust = make_customer(menu)
 
-            # ── Every tick: print activity for ALL branches ──
-            print(f"\n  {'·'*51}")
-            print(f"  {clock_str}  |  {phase}")
+        # Stage 1: Waiter picks table & seats group
+        status, score, occupied = stage_waiter_seat(
+            cust, waiter, day, diff, score, served, clock_str, phase, occupied)
+        if status == "QUIT": break
 
-            for branch in branches:
-                open_flag    = "🟢 OPEN  " if is_branch_open(branch.name, h) else "🔴 CLOSED"
-                seated_total = sum(len(t.seated) for t in branch.tables)
-                cap_total    = sum(t.capacity    for t in branch.tables)
+        # Stage 2: Chef cooks
+        status, score = stage_chef_cook(
+            cust, chef, day, diff, score, served, clock_str, phase)
+        if status == "QUIT": break
+        if status == "LEFT":
+            occupied[cust["table"]] = 0   # free the table
+            continue
 
-                print(f"\n  ┌─ {branch.name}  [{open_flag}]")
+        # Stage 3: Waiter serves
+        status, score = stage_waiter_serve(
+            cust, waiter, day, diff, score, served, clock_str, phase)
+        if status == "QUIT": break
 
-                if is_branch_open(branch.name, h):
-                    # Staff activity
-                    for member in branch.staff:
-                        duty = member.perform_primary_duty()
-                        print(f"  │  ✔ {duty}")
+        # Stage 4: Cashier collects & gives change
+        status, score = stage_cashier_pay(
+            cust, cashier, day, diff, score, served, clock_str, phase)
+        if status == "QUIT": break
 
-                    # Route a customer to this branch this tick
-                    cust = customers[customer_index % len(customers)]
-                    _, seat_msg = route_customer(cust, [branch])
-                    print(f"  │  🚶 {cust.name_tag.display()} arrived  →  {seat_msg}")
-                    customer_index += 1
+        # track money collected
+        total_collected += cust["paid"]
 
-                    # Show current customer count
-                    seated_now = sum(len(t.seated) for t in branch.tables)
-                    print(f"  │  👥 Total customers inside: {seated_now}/{cap_total}")
+        # free the table after group leaves
+        occupied[cust["table"]] = 0
+        served += 1
 
-                else:
-                    print(f"  │  💤 Closed — staff resting, no customers.")
+        # day progression every 5 served
+        if served % 5 == 0:
+            day_summary(day, diff, score, served, total_collected)
+            day += 1
 
-                print(f"  └{'─'*45}")
-
-            # ── End of day check ──
-            elapsed_real = time.time() - clock.start_real_time
-            if elapsed_real >= (24 * 3600 / clock.time_dilation):
-                print(f"\n\n  {'═'*51}")
-                print(f"  🌙  End of day! Final status:")
-                print_branch_status(branches, h)
-                print(f"  Thanks for playing. See you tomorrow!")
-                print(f"  {'═'*51}\n")
-                break
-
-            tick += 1
-            # Sleep ~2 real seconds between ticks (= ~12 game minutes per tick)
-            time.sleep(2)
-
-    except KeyboardInterrupt:
-        print(f"\n\n  {'═'*51}")
-        print(f"  🛑  Game interrupted at {clock_str}")
-        print_branch_status(branches, h)
-        print(f"  {'═'*51}\n")
+    # final screen
+    clear()
+    divider("▓")
+    print(f"  🌙  SHIFT ENDED — Time to clock out!")
+    divider("─")
+    print(f"  Days worked      : {day}")
+    print(f"  Groups served    : {served}")
+    print(f"  Total collected  : ${total_collected}")
+    print(f"  Final Score      : {score} pts")
+    divider("─")
+    if   score >= 500: print(f"  🥇  LEGENDARY STAFF — Unstoppable!")
+    elif score >= 300: print(f"  🥈  STAR CREW — Incredible work!")
+    elif score >= 180: print(f"  🥉  SOLID SHIFT — Well done!")
+    elif score >= 80:  print(f"  🎖️   DECENT SHIFT — Keep it up!")
+    else:              print(f"  😅  ROUGH SHIFT — Better luck next time!")
+    divider("▓")
+    print(f"  See you next shift! 👋\n")
