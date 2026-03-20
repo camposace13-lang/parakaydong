@@ -33,6 +33,41 @@ def getch():
     except Exception:
         return input("  > ").strip()[:1].lower()
 
+def print_choices(options):
+    """
+    EXTRACTED UTILITY — was duplicated inside Chef.cook() and
+    Cashier.collect_payment(). Prints a numbered choice list
+    wrapped in dividers, then prompts the player.
+    """
+    divider("─")
+    for i, opt in enumerate(options):
+        print(f"  [{i+1}]  {opt}")
+    divider("─")
+    print(f"\n  Press the number of the correct choice.")
+
+def pick_from_choices(options, correct_idx):
+    """
+    EXTRACTED UTILITY — was duplicated inside Chef.cook() and
+    Cashier.collect_payment(). Runs the shared keypress loop:
+    waits for a valid number key, returns (elapsed, chosen_idx).
+    Returns ("QUIT", None) if the player presses Q.
+
+    Before calling this, print your own prompt above the choices.
+    The caller is responsible for interpreting correct vs wrong.
+    """
+    start = time.time()
+    while True:
+        k = getch()
+        if k == "q":
+            return "QUIT", None
+        try:
+            chosen = int(k) - 1
+        except ValueError:
+            continue
+        if chosen < 0 or chosen >= len(options):
+            continue
+        return time.time() - start, chosen
+
 
 # ═══════════════════════════════════════════════════════════
 # NAMETAG — Composition class
@@ -72,13 +107,32 @@ class NameTag:
 
 
 # ═══════════════════════════════════════════════════════════
+# INTRODUCES MIXIN — Shared introduce() behaviour
+#
+# PROBLEM (before fix): introduce() was defined identically in
+#   both BasePlayer and Customer:
+#       def introduce(self): return self.name_tag.greet()
+#   They share no common parent, so the body was copy-pasted.
+#
+# FIX: Extract into a tiny mixin. Both BasePlayer and Customer
+#   inherit from it, eliminating the duplicate body entirely.
+#   Only ONE definition now exists.
+# ═══════════════════════════════════════════════════════════
+
+class _IntroduceMixin:
+    """Provides introduce() for any class that HAS-A name_tag (NameTag)."""
+    def introduce(self):                            # defined ONCE — replaces two copies
+        return self.name_tag.greet()
+
+
+# ═══════════════════════════════════════════════════════════
 # BASEPLAYER — Abstract parent for all staff
 # ABSTRACTION: cannot be instantiated directly
 # INHERITANCE: Chef, Cashier, Waiter all extend this
 # _calc_points defined ONCE here — inherited by all (no duplication)
 # ═══════════════════════════════════════════════════════════
 
-class BasePlayer(ABC):
+class BasePlayer(_IntroduceMixin, ABC):             # now gets introduce() from the mixin
     def __init__(self, name, role):
         self.name_tag = NameTag(name, role)         # COMPOSITION: HAS-A NameTag
         self._is_busy = False                       # ENCAPSULATION: protected attribute
@@ -91,8 +145,7 @@ class BasePlayer(ABC):
     def perform_primary_duty(self):
         pass
 
-    def introduce(self):
-        return self.name_tag.greet()
+    # introduce() removed — inherited from _IntroduceMixin (no longer duplicated)
 
     def _calc_points(self, elapsed, base=5, max_bonus=5, limit=6):
         """
@@ -141,37 +194,28 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         correct_idx = options.index(order.pizza)
 
         print(f"\n  🍳  Order in! Cook: {order.pizza} x{order.quantity}\n")
-        divider("─")
-        for i, opt in enumerate(options):
-            print(f"  [{i+1}]  {opt}")
-        divider("─")
+        # Uses shared print_choices() — was an inline divider+loop duplicate
+        print_choices(options)
         print(f"\n  Press the correct number.")
 
-        start = time.time()
-        while True:
-            k = getch()
-            if k == "q":
-                return "QUIT", 0
-            try:
-                chosen = int(k) - 1
-            except ValueError:
-                continue
-            if chosen < 0 or chosen >= len(options):
-                continue
+        # Uses shared pick_from_choices() — loop body was duplicated in collect_payment()
+        result = pick_from_choices(options, correct_idx)
+        if result[0] == "QUIT":
+            return "QUIT", 0
 
-            elapsed = time.time() - start
-            if chosen == correct_idx:
-                self._correct_cooks += 1
-                pts = self._calc_points(elapsed)    # INHERITANCE: from BasePlayer
-                print(f"\n  ✅  Correct! {order.pizza} x{order.quantity} "
-                      f"is cooking! (+{pts} pts)\n")
-                time.sleep(1.5)
-                return "OK", pts
-            else:
-                self._incorrect_cooks += 1
-                print(f"\n  ❌  Wrong pizza! The group LEFT! (-15 pts)\n")
-                time.sleep(2)
-                return "WRONG", -15
+        elapsed, chosen = result
+        if chosen == correct_idx:
+            self._correct_cooks += 1
+            pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
+            print(f"\n  ✅  Correct! {order.pizza} x{order.quantity} "
+                  f"is cooking! (+{pts} pts)\n")
+            time.sleep(1.5)
+            return "OK", pts
+        else:
+            self._incorrect_cooks += 1
+            print(f"\n  ❌  Wrong pizza! The group LEFT! (-15 pts)\n")
+            time.sleep(2)
+            return "WRONG", -15
 
     def __str__(self):                              # POLYMORPHISM: overrides BasePlayer.__str__
         return (f"{self.name_tag.display()} | Duty: Cooking | "
@@ -340,7 +384,6 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         print(f"  💵  Bill: ${bill}  |  Paid: ${paid}\n")
         print(f"  Pick the correct change to give back:\n")
 
-        start = time.time()
         if change == 0:
             options     = ["No change — $0"]
             correct_idx = 0
@@ -356,38 +399,29 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
             random.shuffle(options)
             correct_idx = options.index(f"${change}")
 
-        divider("─")
-        for i, opt in enumerate(options):
-            print(f"  [{i+1}]  {opt}")
-        divider("─")
-        print(f"\n  Press the number of the correct change.")
+        # Uses shared print_choices() — was an inline divider+loop duplicate
+        print_choices(options)
 
-        while True:
-            k = getch()
-            if k == "q":
-                return "QUIT", 0
-            try:
-                chosen = int(k) - 1
-            except ValueError:
-                continue
-            if chosen < 0 or chosen >= len(options):
-                continue
+        # Uses shared pick_from_choices() — loop body was duplicated in cook()
+        result = pick_from_choices(options, correct_idx)
+        if result[0] == "QUIT":
+            return "QUIT", 0
 
-            elapsed = time.time() - start
-            if chosen == correct_idx:
-                self._correct_change += 1
-                pts = self._calc_points(elapsed)    # INHERITANCE: from BasePlayer
-                tip = group.tip()
-                print(f"\n  ✅  Correct change! (+{pts} pts)")
-                print(f"  💰  {group.leader_name} left a tip: +{tip} pts\n")
-                time.sleep(1.5)
-                return "OK", pts + tip
-            else:
-                self._wrong_change += 1
-                print(f"\n  ❌  Wrong change! Correct was "
-                      f"{options[correct_idx]}. (-15 pts)\n")
-                time.sleep(1.5)
-                return "WRONG", -15
+        elapsed, chosen = result
+        if chosen == correct_idx:
+            self._correct_change += 1
+            pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
+            tip = group.tip()
+            print(f"\n  ✅  Correct change! (+{pts} pts)")
+            print(f"  💰  {group.leader_name} left a tip: +{tip} pts\n")
+            time.sleep(1.5)
+            return "OK", pts + tip
+        else:
+            self._wrong_change += 1
+            print(f"\n  ❌  Wrong change! Correct was "
+                  f"{options[correct_idx]}. (-15 pts)\n")
+            time.sleep(1.5)
+            return "WRONG", -15
 
     def __str__(self):                              # POLYMORPHISM: overrides BasePlayer.__str__
         return (f"{self.name_tag.display()} | Duty: Register | "
@@ -450,7 +484,7 @@ class Order:
 # tip_amount() is POLYMORPHIC — different per customer type
 # ═══════════════════════════════════════════════════════════
 
-class Customer:
+class Customer(_IntroduceMixin):                    # now gets introduce() from the mixin
     NAMES = ["Luigi","Yoshi","Koopa","Shy Guy","Toad Jr.",
              "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
 
@@ -468,8 +502,7 @@ class Customer:
             raise ValueError("Money cannot be negative.")
         self._money = amount
 
-    def introduce(self):
-        return self.name_tag.greet()
+    # introduce() removed — inherited from _IntroduceMixin (no longer duplicated)
 
     def tip_amount(self):                           # POLYMORPHISM: overridden in VipCustomer
         return random.randint(1, 5)
@@ -794,9 +827,9 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         divider()
         self.show_staff()
         self.show_tables()
-        print(f"  🍽️  Waiter  → [1/2/3] pick table")
-        print(f"  👨‍🍳  Chef    → [1/2/3] correct pizza (wrong = group leaves)")
-        print(f"  💰  Cashier → [G] collect, [1/2/3] correct change")
+        print(f"Waiter  → [1/2/3] pick table")
+        print(f"Chef    → [1/2/3] correct pizza (wrong = group leaves)")
+        print(f"Cashier → [G] collect, [1/2/3] correct change")
         print(f"\n  Speed bonus: <1s = full | ~3s = half | 6s+ = none")
         print(f"  Wrong key  : -15 pts | Tip: Regular 1–5 | VIP 1–10")
         print(f"  Day advances every 5 groups served.")
@@ -824,7 +857,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             group = self._make_group()
 
             # STAGE 1: Waiter object seats the group
-            self._show_header(f"🍽️  WAITER  —  {waiter.name_tag.name}")
+            self._show_header(f"WAITER  —  {waiter.name_tag.name}")
             status, table, pts = waiter.seat_group(group, self._tables)
             if status == "QUIT":  break
             if status == "WAIT":  continue
@@ -834,7 +867,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             self._score += pts
 
             # STAGE 2: Chef object cooks the order
-            self._show_header(f"👨‍🍳  CHEF  —  {chef.name_tag.name}")
+            self._show_header(f"CHEF  —  {chef.name_tag.name}")
             status, pts = chef.cook(group.order, self._menu, diff["choices"])
             if status == "QUIT":  break
             if status == "WRONG":
@@ -844,13 +877,13 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             self._score += pts
 
             # STAGE 3: Waiter object serves the food
-            self._show_header(f"🍽️  WAITER  —  {waiter.name_tag.name}")
+            self._show_header(f"WAITER  —  {waiter.name_tag.name}")
             status, pts = waiter.serve_food(group)
             if status == "QUIT":  break
             self._score += pts
 
             # STAGE 4: Cashier object collects payment
-            self._show_header(f"💰  CASHIER  —  {cashier.name_tag.name}")
+            self._show_header(f"CASHIER  —  {cashier.name_tag.name}")
             status, pts = cashier.collect_payment(group)
             if status == "QUIT":  break
             if pts < 0:
@@ -891,4 +924,4 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         elif sc >= 80:  print(f"  🎖️   DECENT SHIFT — Keep it up!")
         else:           print(f"  😅  ROUGH SHIFT — Better luck next time!")
         divider("▓")
-        print(f"\n  See you next shift! 👋\n")
+        print(f"\n  See you next shift! \n")
