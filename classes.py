@@ -8,65 +8,125 @@ import os, sys, time, random
 from abc import ABC, abstractmethod
 
 
-# ───────────────────────────────────────────────────────────
-# TERMINAL UTILITIES
-# Used by class methods — kept here to avoid circular imports
-# ───────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+# TERMINALUTILS — Terminal I/O operations (OOP approach)
+# Encapsulates all terminal utilities as static methods
+# ═══════════════════════════════════════════════════════════
 
-def clear():
-    os.system("cls" if os.name == "nt" else "clear")
+class TerminalUtils:
+    """All terminal I/O operations as class methods."""
+    
+    @staticmethod
+    def clear():
+        """Clear the terminal screen."""
+        os.system("cls" if os.name == "nt" else "clear")
 
-def divider(char="═", width=55):
-    print(f"  {char * width}")
+    @staticmethod
+    def divider(char="═", width=55):
+        """Print a decorative divider line."""
+        print(f"  {char * width}")
 
-def getch():
-    """Single keypress — no Enter needed."""
-    try:
-        import tty, termios
-        fd  = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
+    @staticmethod
+    def getch():
+        """Single keypress — no Enter needed."""
         try:
-            tty.setraw(fd)
-            return sys.stdin.read(1).lower()
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
-    except Exception:
-        return input("  > ").strip()[:1].lower()
+            import tty, termios
+            fd  = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                return sys.stdin.read(1).lower()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except Exception:
+            return input("  > ").strip()[:1].lower()
 
-def print_choices(options):
-    """
-    EXTRACTED UTILITY — was duplicated inside Chef.cook() and
-    Cashier.collect_payment(). Prints a numbered choice list
-    wrapped in dividers, then prompts the player.
-    """
-    divider("─")
-    for i, opt in enumerate(options):
-        print(f"  [{i+1}]  {opt}")
-    divider("─")
-    print(f"\n  Press the number of the correct choice.")
+    @staticmethod
+    def print_choices(options):
+        """
+        Print a numbered choice list wrapped in dividers.
+        Used by Chef.cook() and Cashier.collect_payment().
+        """
+        TerminalUtils.divider("─")
+        for i, opt in enumerate(options):
+            print(f"  [{i+1}]  {opt}")
+        TerminalUtils.divider("─")
+        print(f"\n  Press the number of the correct choice.")
 
-def pick_from_choices(options, correct_idx):
-    """
-    EXTRACTED UTILITY — was duplicated inside Chef.cook() and
-    Cashier.collect_payment(). Runs the shared keypress loop:
-    waits for a valid number key, returns (elapsed, chosen_idx).
-    Returns ("QUIT", None) if the player presses Q.
+    @staticmethod
+    def pick_from_choices(options, correct_idx):
+        """
+        Run the shared keypress loop: waits for a valid number key,
+        returns (elapsed, chosen_idx). Returns ("QUIT", None) if Q pressed.
+        """
+        start = time.time()
+        while True:
+            k = TerminalUtils.getch()
+            if k == "q":
+                return "QUIT", None
+            try:
+                chosen = int(k) - 1
+            except ValueError:
+                continue
+            if chosen < 0 or chosen >= len(options):
+                continue
+            return time.time() - start, chosen
 
-    Before calling this, print your own prompt above the choices.
-    The caller is responsible for interpreting correct vs wrong.
-    """
-    start = time.time()
-    while True:
-        k = getch()
-        if k == "q":
-            return "QUIT", None
-        try:
-            chosen = int(k) - 1
-        except ValueError:
-            continue
-        if chosen < 0 or chosen >= len(options):
-            continue
-        return time.time() - start, chosen
+
+# ═══════════════════════════════════════════════════════════
+# GAMESETUP — Game initialization (all setup logic in one class)
+# ═══════════════════════════════════════════════════════════
+
+class GameSetup:
+    """Handles all game initialization and setup."""
+    
+    @staticmethod
+    def get_staff_names():
+        """Prompt user for staff names with defaults."""
+        print(f"  Enter your staff names:\n")
+        
+        print(f"  Waiter name  : ", end="", flush=True)
+        waiter_name = input().strip() or "Alex"
+        
+        print(f"  Chef name    : ", end="", flush=True)
+        chef_name = input().strip() or "Mario"
+        
+        print(f"  Cashier name : ", end="", flush=True)
+        cashier_name = input().strip() or "Birdo"
+        
+        return waiter_name, chef_name, cashier_name
+    
+    @staticmethod
+    def create_branch():
+        """Creates and configures the entire game world."""
+        # Welcome screen
+        TerminalUtils.clear()
+        TerminalUtils.divider()
+        print(f"  🍕  PIZZA RESTAURANT SIMULATOR")
+        TerminalUtils.divider()
+        print(f"\n")
+        
+        # Get staff names from user
+        waiter_name, chef_name, cashier_name = GameSetup.get_staff_names()
+        
+        # Create the branch object
+        branch = Area1Branch("Area 1 Pizzeria")
+        branch.set_pizza_menu()
+        
+        # Add staff objects to the branch
+        branch.add_staff(Waiter(waiter_name))
+        branch.add_staff(Chef(chef_name))
+        branch.add_staff(Cashier(cashier_name))
+        
+        # Add table objects to the branch
+        branch.add_table(Table(1, 2))   # Table 1: 2 seats
+        branch.add_table(Table(2, 4))   # Table 2: 4 seats
+        branch.add_table(Table(3, 5))   # Table 3: 5 seats
+        
+        # Attach the clock
+        branch.set_clock(RestaurantClock(start_hour=7))
+        
+        return branch
 
 
 # ═══════════════════════════════════════════════════════════
@@ -194,12 +254,12 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         correct_idx = options.index(order.pizza)
 
         print(f"\n  🍳  Order in! Cook: {order.pizza} x{order.quantity}\n")
-        # Uses shared print_choices() — was an inline divider+loop duplicate
-        print_choices(options)
+        # Uses shared TerminalUtils.print_choices() — was an inline divider+loop duplicate
+        TerminalUtils.print_choices(options)
         print(f"\n  Press the correct number.")
 
-        # Uses shared pick_from_choices() — loop body was duplicated in collect_payment()
-        result = pick_from_choices(options, correct_idx)
+        # Uses shared TerminalUtils.pick_from_choices() — loop body was duplicated in collect_payment()
+        result = TerminalUtils.pick_from_choices(options, correct_idx)
         if result[0] == "QUIT":
             return "QUIT", 0
 
@@ -273,14 +333,14 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
         if not valid_keys:
             print(f"  ⚠️  No table fits this group of {group.size}! Waiting...\n")
             print(f"  Press any key to retry or [Q] to quit.")
-            k = getch()
+            k = TerminalUtils.getch()
             return ("QUIT", None, 0) if k == "q" else ("WAIT", None, 0)
 
         print(f"  Press [{'/'.join(valid_keys)}] to seat them.")
         start = time.time()
 
         while True:
-            k = getch()
+            k = TerminalUtils.getch()
             if k == "q":
                 return "QUIT", None, 0
             if k in [str(t.table_number) for t in tables] and k not in valid_keys:
@@ -308,7 +368,7 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
         print(f"  Press [S] to serve Table {group.table.table_number}.")
         start = time.time()
         while True:
-            k = getch()
+            k = TerminalUtils.getch()
             if k == "s":
                 self._groups_served += 1
                 elapsed = time.time() - start
@@ -370,7 +430,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         print(f"\n  Press [G] to collect payment.")
 
         while True:
-            k = getch()
+            k = TerminalUtils.getch()
             if k == "g":
                 self._total_collected += paid
                 print(f"\n  ✅  ${paid} collected!")
@@ -399,11 +459,11 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
             random.shuffle(options)
             correct_idx = options.index(f"${change}")
 
-        # Uses shared print_choices() — was an inline divider+loop duplicate
-        print_choices(options)
+        # Uses shared TerminalUtils.print_choices() — was an inline divider+loop duplicate
+        TerminalUtils.print_choices(options)
 
-        # Uses shared pick_from_choices() — loop body was duplicated in cook()
-        result = pick_from_choices(options, correct_idx)
+        # Uses shared TerminalUtils.pick_from_choices() — loop body was duplicated in cook()
+        result = TerminalUtils.pick_from_choices(options, correct_idx)
         if result[0] == "QUIT":
             return "QUIT", 0
 
@@ -776,22 +836,22 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
 
     def _show_header(self, role_label):
         diff = self._get_diff()
-        clear()
-        divider()
+        TerminalUtils.clear()
+        TerminalUtils.divider()
         print(f"  🍕  {self._name}  |  {self._clock.time_str()}  "
               f"{self._clock.get_phase(self._clock.get_game_time()[0])}")
         print(f"  📅  Day {self._day}  {diff['label']}  |  "
               f"⭐ Score: {self._score}  |  "
               f"👥 Served: {self._served}")
-        divider()
+        TerminalUtils.divider()
         print(f"\n  👤  Current Role: {role_label}\n")
 
     def _day_summary(self):
         diff = self._get_diff()
-        clear()
-        divider()
+        TerminalUtils.clear()
+        TerminalUtils.divider()
         print(f"  🌙  END OF DAY {self._day} SHIFT  —  {diff['label']}")
-        divider("─")
+        TerminalUtils.divider("─")
         print(f"  Groups served    : {self._served}")
         print(f"  Money collected  : ${self._total_collected}")
         print(f"  Total score      : {self._score} pts")
@@ -799,7 +859,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             nd = self.DIFFICULTY[self._day + 1]
             print(f"\n  ⚠️  Tomorrow: {nd['label']}")
             print(f"  Choices: {nd['choices']}  |  Arrival gap: {nd['gap']}s")
-        divider()
+        TerminalUtils.divider()
         print(f"\n  Rest up! Press ENTER to start Day {self._day + 1} shift...")
         input()
 
@@ -821,10 +881,10 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             return
 
         # intro screen
-        clear()
-        divider()
+        TerminalUtils.clear()
+        TerminalUtils.divider()
         print(f"  🍕  {self._name}")
-        divider()
+        TerminalUtils.divider()
         self.show_staff()
         self.show_tables()
         print(f"Waiter  → [1/2/3] pick table")
@@ -833,7 +893,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         print(f"\n  Speed bonus: <1s = full | ~3s = half | 6s+ = none")
         print(f"  Wrong key  : -15 pts | Tip: Regular 1–5 | VIP 1–10")
         print(f"  Day advances every 5 groups served.")
-        divider()
+        TerminalUtils.divider()
         print(f"\n  Press ENTER to start the shift!\n")
         input()
 
@@ -842,13 +902,13 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             diff = self._get_diff()
 
             # arrival gap screen
-            clear()
-            divider()
+            TerminalUtils.clear()
+            TerminalUtils.divider()
             print(f"  🍕  {self._name}  |  {self._clock.time_str()}")
             print(f"  📅  Day {self._day}  {diff['label']}  |  "
                   f"⭐ Score: {self._score}  |  "
                   f"👥 Served: {self._served}")
-            divider()
+            TerminalUtils.divider()
             self.show_tables()
             print(f"  ⏳  Next group in {diff['gap']} seconds... "
                   f"(Q to end shift)\n")
@@ -872,7 +932,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             if status == "QUIT":  break
             if status == "WRONG":
                 self._score = max(0, self._score + pts)
-                table.clear()
+                table.TerminalUtils.clear()
                 continue
             self._score += pts
 
@@ -892,7 +952,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
                 self._score += pts
 
             self._total_collected += group.order.amount_paid
-            table.clear()
+            table.TerminalUtils.clear()
             self._served += 1
 
             if self._served % 5 == 0:
@@ -903,25 +963,25 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         self._end_of_shift(waiter, chef, cashier)
 
     def _end_of_shift(self, waiter, chef, cashier):
-        clear()
-        divider("▓")
+        TerminalUtils.clear()
+        TerminalUtils.divider("▓")
         print(f"  🌙  SHIFT ENDED — Time to clock out!")
-        divider("─")
+        TerminalUtils.divider("─")
         print(f"  Days worked      : {self._day}")
         print(f"  Groups served    : {self._served}")
         print(f"  Money collected  : ${self._total_collected}")
         print(f"  Final Score      : {self._score} pts")
-        divider("─")
+        TerminalUtils.divider("─")
         print(f"\n  📊  Staff Performance:")
         print(f"  {waiter}")
         print(f"  {chef}")
         print(f"  {cashier}")
-        divider("─")
+        TerminalUtils.divider("─")
         sc = self._score
         if   sc >= 500: print(f"  🥇  LEGENDARY STAFF — Unstoppable!")
         elif sc >= 300: print(f"  🥈  STAR CREW — Incredible work!")
         elif sc >= 180: print(f"  🥉  SOLID SHIFT — Well done!")
         elif sc >= 80:  print(f"  🎖️   DECENT SHIFT — Keep it up!")
         else:           print(f"  😅  ROUGH SHIFT — Better luck next time!")
-        divider("▓")
+        TerminalUtils.divider("▓")
         print(f"\n  See you next shift! \n")
