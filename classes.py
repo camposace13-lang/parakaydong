@@ -168,20 +168,11 @@ class NameTag:
 
 # ═══════════════════════════════════════════════════════════
 # INTRODUCES MIXIN — Shared introduce() behaviour
-#
-# PROBLEM (before fix): introduce() was defined identically in
-#   both BasePlayer and Customer:
-#       def introduce(self): return self.name_tag.greet()
-#   They share no common parent, so the body was copy-pasted.
-#
-# FIX: Extract into a tiny mixin. Both BasePlayer and Customer
-#   inherit from it, eliminating the duplicate body entirely.
-#   Only ONE definition now exists.
 # ═══════════════════════════════════════════════════════════
 
 class _IntroduceMixin:
     """Provides introduce() for any class that HAS-A name_tag (NameTag)."""
-    def introduce(self):                            # defined ONCE — replaces two copies
+    def introduce(self):
         return self.name_tag.greet()
 
 
@@ -189,10 +180,9 @@ class _IntroduceMixin:
 # BASEPLAYER — Abstract parent for all staff
 # ABSTRACTION: cannot be instantiated directly
 # INHERITANCE: Chef, Cashier, Waiter all extend this
-# _calc_points defined ONCE here — inherited by all (no duplication)
 # ═══════════════════════════════════════════════════════════
 
-class BasePlayer(_IntroduceMixin, ABC):             # now gets introduce() from the mixin
+class BasePlayer(_IntroduceMixin, ABC):
     def __init__(self, name, role):
         self.name_tag = NameTag(name, role)         # COMPOSITION: HAS-A NameTag
         self._is_busy = False                       # ENCAPSULATION: protected attribute
@@ -203,15 +193,19 @@ class BasePlayer(_IntroduceMixin, ABC):             # now gets introduce() from 
 
     @abstractmethod                                 # ABSTRACTION: subclass MUST implement
     def perform_primary_duty(self):
+        """
+        POLYMORPHISM: each subclass overrides this to set its own
+        stat modifier that directly affects scoring in the game.
+        Chef  → sets _cook_multiplier  (widens reaction time window)
+        Waiter → sets _seat_bonus      (flat pts added per seating/serve)
+        Cashier → sets _change_bonus   (flat pts added per correct change)
+        """
         pass
-
-    # introduce() removed — inherited from _IntroduceMixin (no longer duplicated)
 
     def _calc_points(self, elapsed, base=5, max_bonus=5, limit=6):
         """
         INHERITANCE: defined once in BasePlayer, inherited by Chef, Waiter, Cashier.
         Speed-based scoring: under 1s = full bonus, ~3s = half, 6s+ = no bonus.
-        No duplication — all staff reuse this single method.
         """
         ratio = 1.0 if elapsed <= 1 else max(0.0, 1 - ((elapsed - 1) / (limit - 1)))
         return base + int(max_bonus * ratio)
@@ -225,6 +219,11 @@ class BasePlayer(_IntroduceMixin, ABC):             # now gets introduce() from 
 # CHEF — Child class of BasePlayer
 # Cooks orders by selecting the correct pizza
 # Inherits: name_tag, _is_busy, introduce(), _calc_points()
+#
+# POLYMORPHISM: perform_primary_duty() sets _cook_multiplier = 1.5
+#   This multiplier is applied to elapsed time in cook(), making the
+#   scoring window effectively 1.5x wider — Chef's duty actively
+#   makes them better at their job, not just a label.
 # ═══════════════════════════════════════════════════════════
 
 class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A BasePlayer
@@ -232,6 +231,7 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         super().__init__(name, "Chef")              # reuses BasePlayer.__init__
         self._correct_cooks   = 0                  # ENCAPSULATION: protected
         self._incorrect_cooks = 0                  # ENCAPSULATION: protected
+        self._cook_multiplier = 1.0                # default: no bonus until duty is called
 
     @property
     def correct_cooks(self):
@@ -242,8 +242,15 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         return self._incorrect_cooks
 
     def perform_primary_duty(self):                 # POLYMORPHISM: overrides abstract method
+        """
+        Sets _cook_multiplier to 1.5 — this widens the Chef's reaction
+        time window when scoring in cook(), so faster responses earn more.
+        The duty call CHANGES how cook() scores, not just prints a label.
+        """
         self._is_busy = True
-        return f"{self.name_tag.name} is cooking 🍳"
+        self._cook_multiplier = 1.5
+        return (f"{self.name_tag.name} is cooking 🍳  "
+                f"[Duty Active: reaction window x{self._cook_multiplier}]")
 
     def cook(self, order, all_pizzas, num_choices):
         """Chef picks the correct pizza from choices."""
@@ -254,11 +261,9 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         correct_idx = options.index(order.pizza)
 
         print(f"\n  🍳  Order in! Cook: {order.pizza} x{order.quantity}\n")
-        # Uses shared TerminalUtils.print_choices() — was an inline divider+loop duplicate
         TerminalUtils.print_choices(options)
         print(f"\n  Press the correct number.")
 
-        # Uses shared TerminalUtils.pick_from_choices() — loop body was duplicated in collect_payment()
         result = TerminalUtils.pick_from_choices(options, correct_idx)
         if result[0] == "QUIT":
             return "QUIT", 0
@@ -266,9 +271,11 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         elapsed, chosen = result
         if chosen == correct_idx:
             self._correct_cooks += 1
-            pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
+            # POLYMORPHISM IN ACTION: _cook_multiplier set by perform_primary_duty()
+            # stretches elapsed time so scoring treats the Chef as faster
+            pts = self._calc_points(elapsed * self._cook_multiplier)
             print(f"\n  ✅  Correct! {order.pizza} x{order.quantity} "
-                f"is cooking! (+{pts} pts)\n")
+                  f"is cooking! (+{pts} pts)\n")
             time.sleep(1.5)
             return "OK", pts
         else:
@@ -287,6 +294,10 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
 # WAITER — Child class of BasePlayer
 # Seats groups and serves food
 # Inherits: name_tag, _is_busy, introduce(), _calc_points()
+#
+# POLYMORPHISM: perform_primary_duty() sets _seat_bonus = 3
+#   This flat bonus is added to every seating and serve score,
+#   meaning the Waiter's duty directly increases their points earned.
 # ═══════════════════════════════════════════════════════════
 
 class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A BasePlayer
@@ -294,6 +305,7 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
         super().__init__(name, "Waiter")            # reuses BasePlayer.__init__
         self._groups_seated = 0                     # ENCAPSULATION: protected
         self._groups_served = 0                     # ENCAPSULATION: protected
+        self._seat_bonus    = 0                     # default: no bonus until duty is called
 
     @property
     def groups_seated(self):
@@ -304,16 +316,23 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
         return self._groups_served
 
     def perform_primary_duty(self):                 # POLYMORPHISM: overrides abstract method
+        """
+        Sets _seat_bonus = 3 — this flat bonus is added on top of the
+        speed score every time the Waiter seats or serves a group.
+        The duty call CHANGES how seat_group() and serve_food() score.
+        """
         self._is_busy = True
-        return f"{self.name_tag.name} is serving tables 🍽️"
+        self._seat_bonus = 3
+        return (f"{self.name_tag.name} is serving tables 🍽️  "
+                f"[Duty Active: +{self._seat_bonus} pts per action]")
 
     def seat_group(self, group, tables):
         """Waiter picks a table and seats the group."""
         title = "Ma'am" if group.is_vip else "Sir"
         print(f"  🚶 Group arrived! Leader: {group.leader_name} "
-            f"({group.size} person{'s' if group.size > 1 else ''})")
+              f"({group.size} person{'s' if group.size > 1 else ''})")
         print(f"\n  [{self.name_tag.name}]: Welcome to Area 1 Pizzeria, "
-            f"{title} {group.leader_name}!\n")
+              f"{title} {group.leader_name}!\n")
         print(f"  They want: {group.order.pizza} x{group.order.quantity}\n")
 
         print(f"  🪑  Tables:")
@@ -327,7 +346,7 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
                 marker = "✅ available"
                 valid_keys.append(str(t.table_number))
             print(f"     [{t.table_number}] Table {t.table_number} "
-                f"(cap {t.capacity}) — {marker}")
+                  f"(cap {t.capacity}) — {marker}")
         print()
 
         if not valid_keys:
@@ -356,9 +375,11 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
             chosen_table.seat(group)
             self._groups_seated += 1
             elapsed = time.time() - start
-            pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
+            # POLYMORPHISM IN ACTION: _seat_bonus set by perform_primary_duty()
+            # adds flat points on top of the speed score
+            pts = self._calc_points(elapsed) + self._seat_bonus
             print(f"\n  ✅  Group seated at Table {chosen_table.table_number}! "
-                f"(+{pts} pts)\n")
+                  f"(+{pts} pts)\n")
             time.sleep(1)
             return "OK", chosen_table, pts
 
@@ -372,9 +393,10 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
             if k == "s":
                 self._groups_served += 1
                 elapsed = time.time() - start
-                pts = self._calc_points(elapsed)    # INHERITANCE: from BasePlayer
+                # POLYMORPHISM IN ACTION: _seat_bonus applies here too
+                pts = self._calc_points(elapsed) + self._seat_bonus
                 print(f"\n  ✅  Served to Table {group.table.table_number}! "
-                    f"(+{pts} pts)\n")
+                      f"(+{pts} pts)\n")
                 time.sleep(1.5)
                 return "OK", pts
             elif k == "q":
@@ -390,6 +412,10 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
 # CASHIER — Child class of BasePlayer
 # Collects payment and gives correct change
 # Inherits: name_tag, _is_busy, introduce(), _calc_points()
+#
+# POLYMORPHISM: perform_primary_duty() sets _change_bonus = 2
+#   This flat bonus is added to every correct change score,
+#   meaning the Cashier's duty directly increases accuracy rewards.
 # ═══════════════════════════════════════════════════════════
 
 class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A BasePlayer
@@ -398,6 +424,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         self._total_collected = 0                   # ENCAPSULATION: protected
         self._correct_change  = 0                   # ENCAPSULATION: protected
         self._wrong_change    = 0                   # ENCAPSULATION: protected
+        self._change_bonus    = 0                   # default: no bonus until duty is called
 
     @property
     def total_collected(self):
@@ -412,8 +439,15 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         return self._wrong_change
 
     def perform_primary_duty(self):                 # POLYMORPHISM: overrides abstract method
+        """
+        Sets _change_bonus = 2 — this flat bonus is added on top of the
+        speed score every time the Cashier gives correct change.
+        The duty call CHANGES how collect_payment() scores.
+        """
         self._is_busy = True
-        return f"{self.name_tag.name} is at the register 💰"
+        self._change_bonus = 2
+        return (f"{self.name_tag.name} is at the register 💰  "
+                f"[Duty Active: +{self._change_bonus} pts per correct change]")
 
     def collect_payment(self, group):
         """Collects bill and asks cashier to select correct change."""
@@ -424,7 +458,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         # Step A: collect
         print(f"  💵  Table {group.table.table_number} finished eating!")
         print(f"     {group.order.pizza} x{group.order.quantity} "
-            f"@ ${group.order.unit_price} each")
+              f"@ ${group.order.unit_price} each")
         print(f"     Total bill : ${bill}")
         print(f"     Paid       : ${paid}")
         print(f"\n  Press [G] to collect payment.")
@@ -440,7 +474,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
             elif k == "q":
                 return "QUIT", 0
 
-        # Step B: give change — cashier figures it out (no hint shown)
+        # Step B: give change
         print(f"  💵  Bill: ${bill}  |  Paid: ${paid}\n")
         print(f"  Pick the correct change to give back:\n")
 
@@ -459,10 +493,8 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
             random.shuffle(options)
             correct_idx = options.index(f"${change}")
 
-        # Uses shared TerminalUtils.print_choices() — was an inline divider+loop duplicate
         TerminalUtils.print_choices(options)
 
-        # Uses shared TerminalUtils.pick_from_choices() — loop body was duplicated in cook()
         result = TerminalUtils.pick_from_choices(options, correct_idx)
         if result[0] == "QUIT":
             return "QUIT", 0
@@ -470,7 +502,9 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         elapsed, chosen = result
         if chosen == correct_idx:
             self._correct_change += 1
-            pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
+            # POLYMORPHISM IN ACTION: _change_bonus set by perform_primary_duty()
+            # adds flat points on top of the speed score
+            pts = self._calc_points(elapsed) + self._change_bonus
             tip = group.tip()
             print(f"\n  ✅  Correct change! (+{pts} pts)")
             print(f"  💰  {group.leader_name} left a tip: +{tip} pts\n")
@@ -479,7 +513,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         else:
             self._wrong_change += 1
             print(f"\n  ❌  Wrong change! Correct was "
-                f"{options[correct_idx]}. (-15 pts)\n")
+                  f"{options[correct_idx]}. (-15 pts)\n")
             time.sleep(1.5)
             return "WRONG", -15
 
@@ -544,9 +578,9 @@ class Order:
 # tip_amount() is POLYMORPHIC — different per customer type
 # ═══════════════════════════════════════════════════════════
 
-class Customer(_IntroduceMixin):                    # now gets introduce() from the mixin
+class Customer(_IntroduceMixin):
     NAMES = ["Luigi","Yoshi","Koopa","Shy Guy","Toad Jr.",
-            "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
+             "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
 
     def __init__(self, name, money):
         self.name_tag = NameTag(name, "Customer")   # COMPOSITION: HAS-A NameTag
@@ -561,8 +595,6 @@ class Customer(_IntroduceMixin):                    # now gets introduce() from 
         if amount < 0:
             raise ValueError("Money cannot be negative.")
         self._money = amount
-
-    # introduce() removed — inherited from _IntroduceMixin (no longer duplicated)
 
     def tip_amount(self):                           # POLYMORPHISM: overridden in VipCustomer
         return random.randint(1, 5)
@@ -677,7 +709,7 @@ class Table:
 
     def __str__(self):
         status = (f"occupied — group of {self._current_group.size}"
-                if self.is_occupied else "empty")
+                  if self.is_occupied else "empty")
         return f"Table {self._table_number} | Cap: {self._capacity} | {status}"
 
 
@@ -712,7 +744,6 @@ class RestaurantClock:
 # RESTAURANT — Abstract parent for all branches
 # ABSTRACTION: cannot be instantiated — forces subclasses to
 #   implement set_pizza_menu() and run_shift()
-# ENCAPSULATION: _set_menu() protects how menu is assigned
 # ═══════════════════════════════════════════════════════════
 
 class Restaurant(ABC):                              # ABSTRACTION
@@ -756,7 +787,7 @@ class Restaurant(ABC):                              # ABSTRACTION
     def get_staff_by_type(self, staff_type):
         """Return first staff member of the given type."""
         return next((s for s in self._staff
-                    if isinstance(s, staff_type)), None)
+                     if isinstance(s, staff_type)), None)
 
     def show_staff(self):
         print(f"\n  👥  Staff at {self._name}:")
@@ -785,7 +816,6 @@ class Restaurant(ABC):                              # ABSTRACTION
 # ═══════════════════════════════════════════════════════════
 # AREA1BRANCH — Child class of Restaurant
 # The playable branch — run_shift() is the full game loop
-# as a METHOD on this object
 # ═══════════════════════════════════════════════════════════
 
 class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch IS-A Restaurant
@@ -839,10 +869,10 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         TerminalUtils.clear()
         TerminalUtils.divider()
         print(f"  🍕  {self._name}  |  {self._clock.time_str()}  "
-            f"{self._clock.get_phase(self._clock.get_game_time()[0])}")
+              f"{self._clock.get_phase(self._clock.get_game_time()[0])}")
         print(f"  📅  Day {self._day}  {diff['label']}  |  "
-            f"⭐ Score: {self._score}  |  "
-            f"👥 Served: {self._served}")
+              f"⭐ Score: {self._score}  |  "
+              f"👥 Served: {self._served}")
         TerminalUtils.divider()
         print(f"\n  👤  Current Role: {role_label}\n")
 
@@ -865,9 +895,9 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
 
     def run_shift(self):                            # POLYMORPHISM: overrides abstract method
         """
-        Full game loop — runs as a METHOD on this restaurant object.
-        Delegates every action to the staff objects (Waiter, Chef, Cashier).
-        This is true OOP: objects doing work by calling each other's methods.
+        Full game loop. Calls perform_primary_duty() on each staff member
+        before their stage — this activates their stat modifier so their
+        scoring is affected for that round. That's the polymorphism working.
         """
         if self._clock is None:
             raise RuntimeError("Set a clock first: branch.set_clock(clock)")
@@ -887,9 +917,9 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         TerminalUtils.divider()
         self.show_staff()
         self.show_tables()
-        print(f"Waiter  → [1/2/3] pick table")
-        print(f"Chef    → [1/2/3] correct pizza (wrong = group leaves)")
-        print(f"Cashier → [G] collect, [1/2/3] correct change")
+        print(f"Waiter  → [1/2/3] pick table  (+3 seat bonus from duty)")
+        print(f"Chef    → [1/2/3] correct pizza  (1.5x reaction window from duty)")
+        print(f"Cashier → [G] collect, [1/2/3] correct change  (+2 pts from duty)")
         print(f"\n  Speed bonus: <1s = full | ~3s = half | 6s+ = none")
         print(f"  Wrong key  : -15 pts | Tip: Regular 1–5 | VIP 1–10")
         print(f"  Day advances every 5 groups served.")
@@ -906,18 +936,19 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             TerminalUtils.divider()
             print(f"  🍕  {self._name}  |  {self._clock.time_str()}")
             print(f"  📅  Day {self._day}  {diff['label']}  |  "
-                f"⭐ Score: {self._score}  |  "
-                f"👥 Served: {self._served}")
+                  f"⭐ Score: {self._score}  |  "
+                  f"👥 Served: {self._served}")
             TerminalUtils.divider()
             self.show_tables()
             print(f"  ⏳  Next group in {diff['gap']} seconds... "
-                f"(Q to end shift)\n")
+                  f"(Q to end shift)\n")
             time.sleep(diff["gap"])
 
             group = self._make_group()
 
-            # STAGE 1: Waiter object seats the group
+            # STAGE 1: Waiter performs duty (activates _seat_bonus), then seats group
             self._show_header(f"WAITER  —  {waiter.name_tag.name}")
+            print(f"  {waiter.perform_primary_duty()}\n")
             status, table, pts = waiter.seat_group(group, self._tables)
             if status == "QUIT":  break
             if status == "WAIT":  continue
@@ -926,24 +957,27 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
                 continue
             self._score += pts
 
-            # STAGE 2: Chef object cooks the order
+            # STAGE 2: Chef performs duty (activates _cook_multiplier), then cooks
             self._show_header(f"CHEF  —  {chef.name_tag.name}")
+            print(f"  {chef.perform_primary_duty()}\n")
             status, pts = chef.cook(group.order, self._menu, diff["choices"])
             if status == "QUIT":  break
             if status == "WRONG":
                 self._score = max(0, self._score + pts)
-                table.TerminalUtils.clear()
+                table.clear()
                 continue
             self._score += pts
 
-            # STAGE 3: Waiter object serves the food
+            # STAGE 3: Waiter performs duty again, then serves food
             self._show_header(f"WAITER  —  {waiter.name_tag.name}")
+            print(f"  {waiter.perform_primary_duty()}\n")
             status, pts = waiter.serve_food(group)
             if status == "QUIT":  break
             self._score += pts
 
-            # STAGE 4: Cashier object collects payment
+            # STAGE 4: Cashier performs duty (activates _change_bonus), then collects
             self._show_header(f"CASHIER  —  {cashier.name_tag.name}")
+            print(f"  {cashier.perform_primary_duty()}\n")
             status, pts = cashier.collect_payment(group)
             if status == "QUIT":  break
             if pts < 0:
@@ -952,7 +986,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
                 self._score += pts
 
             self._total_collected += group.order.amount_paid
-            table.TerminalUtils.clear()
+            table.clear()
             self._served += 1
 
             if self._served % 5 == 0:
