@@ -268,7 +268,7 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
             self._correct_cooks += 1
             pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
             print(f"\n  ✅  Correct! {order.pizza} x{order.quantity} "
-                  f"is cooking! (+{pts} pts)\n")
+                f"is cooking! (+{pts} pts)\n")
             time.sleep(1.5)
             return "OK", pts
         else:
@@ -311,9 +311,9 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
         """Waiter picks a table and seats the group."""
         title = "Ma'am" if group.is_vip else "Sir"
         print(f"  🚶 Group arrived! Leader: {group.leader_name} "
-              f"({group.size} person{'s' if group.size > 1 else ''})")
+            f"({group.size} person{'s' if group.size > 1 else ''})")
         print(f"\n  [{self.name_tag.name}]: Welcome to Area 1 Pizzeria, "
-              f"{title} {group.leader_name}!\n")
+            f"{title} {group.leader_name}!\n")
         print(f"  They want: {group.order.pizza} x{group.order.quantity}\n")
 
         print(f"  🪑  Tables:")
@@ -327,7 +327,7 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
                 marker = "✅ available"
                 valid_keys.append(str(t.table_number))
             print(f"     [{t.table_number}] Table {t.table_number} "
-                  f"(cap {t.capacity}) — {marker}")
+                f"(cap {t.capacity}) — {marker}")
         print()
 
         if not valid_keys:
@@ -358,7 +358,7 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
             elapsed = time.time() - start
             pts = self._calc_points(elapsed)        # INHERITANCE: from BasePlayer
             print(f"\n  ✅  Group seated at Table {chosen_table.table_number}! "
-                  f"(+{pts} pts)\n")
+                f"(+{pts} pts)\n")
             time.sleep(1)
             return "OK", chosen_table, pts
 
@@ -374,7 +374,7 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
                 elapsed = time.time() - start
                 pts = self._calc_points(elapsed)    # INHERITANCE: from BasePlayer
                 print(f"\n  ✅  Served to Table {group.table.table_number}! "
-                      f"(+{pts} pts)\n")
+                    f"(+{pts} pts)\n")
                 time.sleep(1.5)
                 return "OK", pts
             elif k == "q":
@@ -424,7 +424,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         # Step A: collect
         print(f"  💵  Table {group.table.table_number} finished eating!")
         print(f"     {group.order.pizza} x{group.order.quantity} "
-              f"@ ${group.order.unit_price} each")
+            f"@ ${group.order.unit_price} each")
         print(f"     Total bill : ${bill}")
         print(f"     Paid       : ${paid}")
         print(f"\n  Press [G] to collect payment.")
@@ -479,7 +479,7 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         else:
             self._wrong_change += 1
             print(f"\n  ❌  Wrong change! Correct was "
-                  f"{options[correct_idx]}. (-15 pts)\n")
+                f"{options[correct_idx]}. (-15 pts)\n")
             time.sleep(1.5)
             return "WRONG", -15
 
@@ -546,7 +546,7 @@ class Order:
 
 class Customer(_IntroduceMixin):                    # now gets introduce() from the mixin
     NAMES = ["Luigi","Yoshi","Koopa","Shy Guy","Toad Jr.",
-             "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
+            "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
 
     def __init__(self, name, money):
         self.name_tag = NameTag(name, "Customer")   # COMPOSITION: HAS-A NameTag
@@ -677,7 +677,7 @@ class Table:
 
     def __str__(self):
         status = (f"occupied — group of {self._current_group.size}"
-                  if self.is_occupied else "empty")
+                if self.is_occupied else "empty")
         return f"Table {self._table_number} | Cap: {self._capacity} | {status}"
 
 
@@ -756,7 +756,7 @@ class Restaurant(ABC):                              # ABSTRACTION
     def get_staff_by_type(self, staff_type):
         """Return first staff member of the given type."""
         return next((s for s in self._staff
-                     if isinstance(s, staff_type)), None)
+                    if isinstance(s, staff_type)), None)
 
     def show_staff(self):
         print(f"\n  👥  Staff at {self._name}:")
@@ -839,10 +839,10 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         TerminalUtils.clear()
         TerminalUtils.divider()
         print(f"  🍕  {self._name}  |  {self._clock.time_str()}  "
-              f"{self._clock.get_phase(self._clock.get_game_time()[0])}")
+            f"{self._clock.get_phase(self._clock.get_game_time()[0])}")
         print(f"  📅  Day {self._day}  {diff['label']}  |  "
-              f"⭐ Score: {self._score}  |  "
-              f"👥 Served: {self._served}")
+            f"⭐ Score: {self._score}  |  "
+            f"👥 Served: {self._served}")
         TerminalUtils.divider()
         print(f"\n  👤  Current Role: {role_label}\n")
 
@@ -906,12 +906,12 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             TerminalUtils.divider()
             print(f"  🍕  {self._name}  |  {self._clock.time_str()}")
             print(f"  📅  Day {self._day}  {diff['label']}  |  "
-                  f"⭐ Score: {self._score}  |  "
-                  f"👥 Served: {self._served}")
+                f"⭐ Score: {self._score}  |  "
+                f"👥 Served: {self._served}")
             TerminalUtils.divider()
             self.show_tables()
             print(f"  ⏳  Next group in {diff['gap']} seconds... "
-                  f"(Q to end shift)\n")
+                f"(Q to end shift)\n")
             time.sleep(diff["gap"])
 
             group = self._make_group()
