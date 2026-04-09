@@ -1,37 +1,21 @@
-# ═══════════════════════════════════════════════════════════
-# CLASSES.PY — All OOP classes for the Pizza Restaurant Simulator
-# Imported by lastday.py (main/logic module)
-# Principles: Encapsulation, Inheritance, Polymorphism, Abstraction
-# ═══════════════════════════════════════════════════════════
-
 import os, sys, time, random
 from abc import ABC, abstractmethod
 
 
-# ═══════════════════════════════════════════════════════════
-# TERMINALUTILS — Terminal I/O operations (OOP approach)
-# Encapsulates all terminal utilities as static methods
-# ═══════════════════════════════════════════════════════════
-
 class TerminalUtils:
-    """All terminal I/O operations as class methods."""
-    
     @staticmethod
     def clear():
-        """Clear the terminal screen."""
         os.system("cls" if os.name == "nt" else "clear")
 
     @staticmethod
     def divider(char="═", width=55):
-        """Print a decorative divider line."""
         print(f"  {char * width}")
 
     @staticmethod
     def getch():
-        """Single keypress — no Enter needed."""
         try:
             import tty, termios
-            fd  = sys.stdin.fileno()
+            fd = sys.stdin.fileno()
             old = termios.tcgetattr(fd)
             try:
                 tty.setraw(fd)
@@ -43,10 +27,6 @@ class TerminalUtils:
 
     @staticmethod
     def print_choices(options):
-        """
-        Print a numbered choice list wrapped in dividers.
-        Used by Chef.cook() and Cashier.collect_payment().
-        """
         TerminalUtils.divider("─")
         for i, opt in enumerate(options):
             print(f"  [{i+1}]  {opt}")
@@ -55,10 +35,6 @@ class TerminalUtils:
 
     @staticmethod
     def pick_from_choices(options, correct_idx):
-        """
-        Run the shared keypress loop: waits for a valid number key,
-        returns (elapsed, chosen_idx). Returns ("QUIT", None) if Q pressed.
-        """
         start = time.time()
         while True:
             k = TerminalUtils.getch()
@@ -68,193 +44,109 @@ class TerminalUtils:
                 chosen = int(k) - 1
             except ValueError:
                 continue
-            if chosen < 0 or chosen >= len(options):
-                continue
-            return time.time() - start, chosen
+            if 0 <= chosen < len(options):
+                return time.time() - start, chosen
 
-
-# ═══════════════════════════════════════════════════════════
-# GAMESETUP — Game initialization (all setup logic in one class)
-# ═══════════════════════════════════════════════════════════
 
 class GameSetup:
-    """Handles all game initialization and setup."""
-    
     @staticmethod
     def get_staff_names():
-        """Prompt user for staff names with defaults."""
         print(f"  Enter your staff names:\n")
-        
-        print(f"  Waiter name  : ", end="", flush=True)
-        waiter_name = input().strip() or "Alex"
-        
-        print(f"  Chef name    : ", end="", flush=True)
-        chef_name = input().strip() or "Mario"
-        
-        print(f"  Cashier name : ", end="", flush=True)
-        cashier_name = input().strip() or "Birdo"
-        
-        return waiter_name, chef_name, cashier_name
-    
+        names = []
+        for role, default in [("Waiter", "Alex"), ("Chef", "Mario"), ("Cashier", "Birdo")]:
+            print(f"  {role} name  : ", end="", flush=True)
+            names.append(input().strip() or default)
+        return names
+
     @staticmethod
     def create_branch():
-        """Creates and configures the entire game world."""
-        # Welcome screen
         TerminalUtils.clear()
         TerminalUtils.divider()
         print(f"  🍕  PIZZA RESTAURANT SIMULATOR")
         TerminalUtils.divider()
-        print(f"\n")
-        
-        # Get staff names from user
+        print()
+
         waiter_name, chef_name, cashier_name = GameSetup.get_staff_names()
-        
-        # Create the branch object
         branch = Area1Branch("Area 1 Pizzeria")
         branch.set_pizza_menu()
-        
-        # Add staff objects to the branch
-        branch.add_staff(Waiter(waiter_name))
-        branch.add_staff(Chef(chef_name))
-        branch.add_staff(Cashier(cashier_name))
-        
-        # Add table objects to the branch
-        branch.add_table(Table(1, 2))   # Table 1: 2 seats
-        branch.add_table(Table(2, 4))   # Table 2: 4 seats
-        branch.add_table(Table(3, 5))   # Table 3: 5 seats
-        
-        # Attach the clock
+
+        for staff in [Waiter(waiter_name), Chef(chef_name), Cashier(cashier_name)]:
+            branch.add_staff(staff)
+        for num, cap in [(1, 2), (2, 4), (3, 5)]:
+            branch.add_table(Table(num, cap))
+
         branch.set_clock(RestaurantClock(start_hour=7))
-        
         return branch
 
 
-# ═══════════════════════════════════════════════════════════
-# NAMETAG — Composition class
-# Embedded inside BasePlayer and Customer (HAS-A relationship)
-# ═══════════════════════════════════════════════════════════
-
 class NameTag:
+    GREETINGS = {
+        "Chef": "Let's cook!", "Cashier": "Welcome, what can I get you?",
+        "Waiter": "Table for how many?", "Customer": "Hi, I'd like to order.",
+        "VipCustomer": "Hello, I have a reservation.",
+    }
+
     def __init__(self, name, role):
-        self._name = name                           # ENCAPSULATION: protected attribute
-        self._role = role                           # ENCAPSULATION: protected attribute
+        self._name = name
+        self._role = role
 
     @property
-    def name(self):                                 # ENCAPSULATION: getter
-        return self._name
+    def name(self): return self._name
 
     @property
-    def role(self):                                 # ENCAPSULATION: getter
-        return self._role
+    def role(self): return self._role
 
     @role.setter
-    def role(self, value):                          # ENCAPSULATION: controlled setter
-        self._role = value
+    def role(self, value): self._role = value
 
-    def display(self):
-        return f"[{self._role}] {self._name}"
+    def display(self): return f"[{self._role}] {self._name}"
 
     def greet(self):
-        # POLYMORPHISM: same method, different output depending on role
-        greetings = {
-            "Chef":        "Let's cook!",
-            "Cashier":     "Welcome, what can I get you?",
-            "Waiter":      "Table for how many?",
-            "Customer":    "Hi, I'd like to order.",
-            "VipCustomer": "Hello, I have a reservation.",
-        }
-        return f"{self.display()}: {greetings.get(self._role, 'Hello!')}"
+        return f"{self.display()}: {self.GREETINGS.get(self._role, 'Hello!')}"
 
-
-# ═══════════════════════════════════════════════════════════
-# INTRODUCES MIXIN — Shared introduce() behaviour
-# ═══════════════════════════════════════════════════════════
 
 class _IntroduceMixin:
-    """Provides introduce() for any class that HAS-A name_tag (NameTag)."""
-    def introduce(self):
-        return self.name_tag.greet()
+    def introduce(self): return self.name_tag.greet()
 
-
-# ═══════════════════════════════════════════════════════════
-# BASEPLAYER — Abstract parent for all staff
-# ABSTRACTION: cannot be instantiated directly
-# INHERITANCE: Chef, Cashier, Waiter all extend this
-# ═══════════════════════════════════════════════════════════
 
 class BasePlayer(_IntroduceMixin, ABC):
     def __init__(self, name, role):
-        self.name_tag = NameTag(name, role)         # COMPOSITION: HAS-A NameTag
-        self._is_busy = False                       # ENCAPSULATION: protected attribute
+        self.name_tag = NameTag(name, role)
+        self._is_busy = False
 
     @property
-    def is_busy(self):                              # ENCAPSULATION: getter
-        return self._is_busy
+    def is_busy(self): return self._is_busy
 
-    @abstractmethod                                 # ABSTRACTION: subclass MUST implement
-    def perform_primary_duty(self):
-        """
-        POLYMORPHISM: each subclass overrides this to set its own
-        stat modifier that directly affects scoring in the game.
-        Chef  → sets _cook_multiplier  (widens reaction time window)
-        Waiter → sets _seat_bonus      (flat pts added per seating/serve)
-        Cashier → sets _change_bonus   (flat pts added per correct change)
-        """
-        pass
+    @abstractmethod
+    def perform_primary_duty(self): pass
 
     def _calc_points(self, elapsed, base=5, max_bonus=5, limit=6):
-        """
-        INHERITANCE: defined once in BasePlayer, inherited by Chef, Waiter, Cashier.
-        Speed-based scoring: under 1s = full bonus, ~3s = half, 6s+ = no bonus.
-        """
         ratio = 1.0 if elapsed <= 1 else max(0.0, 1 - ((elapsed - 1) / (limit - 1)))
         return base + int(max_bonus * ratio)
 
-    def __str__(self):                              # POLYMORPHISM: overridden in every subclass
-        status = "busy" if self._is_busy else "available"
-        return f"{self.name_tag.display()} ({status})"
+    def __str__(self):
+        return f"{self.name_tag.display()} ({'busy' if self._is_busy else 'available'})"
 
 
-# ═══════════════════════════════════════════════════════════
-# CHEF — Child class of BasePlayer
-# Cooks orders by selecting the correct pizza
-# Inherits: name_tag, _is_busy, introduce(), _calc_points()
-#
-# POLYMORPHISM: perform_primary_duty() sets _cook_multiplier = 1.5
-#   This multiplier is applied to elapsed time in cook(), making the
-#   scoring window effectively 1.5x wider — Chef's duty actively
-#   makes them better at their job, not just a label.
-# ═══════════════════════════════════════════════════════════
-
-class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A BasePlayer
+class Chef(BasePlayer):
     def __init__(self, name):
-        super().__init__(name, "Chef")              # reuses BasePlayer.__init__
-        self._correct_cooks   = 0                  # ENCAPSULATION: protected
-        self._incorrect_cooks = 0                  # ENCAPSULATION: protected
-        self._cook_multiplier = 1.0                # default: no bonus until duty is called
+        super().__init__(name, "Chef")
+        self._correct_cooks = self._incorrect_cooks = 0
+        self._cook_multiplier = 1.0
 
     @property
-    def correct_cooks(self):
-        return self._correct_cooks
+    def correct_cooks(self): return self._correct_cooks
 
     @property
-    def incorrect_cooks(self):
-        return self._incorrect_cooks
+    def incorrect_cooks(self): return self._incorrect_cooks
 
-    def perform_primary_duty(self):                 # POLYMORPHISM: overrides abstract method
-        """
-        Sets _cook_multiplier to 1.5 — this widens the Chef's reaction
-        time window when scoring in cook(), so faster responses earn more.
-        The duty call CHANGES how cook() scores, not just prints a label.
-        """
+    def perform_primary_duty(self):
         self._is_busy = True
         self._cook_multiplier = 1.5
-        return (f"{self.name_tag.name} is cooking 🍳  "
-                f"[Duty Active: reaction window x{self._cook_multiplier}]")
+        return f"{self.name_tag.name} is cooking 🍳  [Duty Active: reaction window x{self._cook_multiplier}]"
 
     def cook(self, order, all_pizzas, num_choices):
-        """Chef picks the correct pizza from choices."""
-        wrong   = [p for p in all_pizzas if p != order.pizza]
+        wrong = [p for p in all_pizzas if p != order.pizza]
         random.shuffle(wrong)
         options = wrong[:num_choices - 1] + [order.pizza]
         random.shuffle(options)
@@ -271,11 +163,8 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
         elapsed, chosen = result
         if chosen == correct_idx:
             self._correct_cooks += 1
-            # POLYMORPHISM IN ACTION: _cook_multiplier set by perform_primary_duty()
-            # stretches elapsed time so scoring treats the Chef as faster
             pts = self._calc_points(elapsed * self._cook_multiplier)
-            print(f"\n  ✅  Correct! {order.pizza} x{order.quantity} "
-                  f"is cooking! (+{pts} pts)\n")
+            print(f"\n  ✅  Correct! {order.pizza} x{order.quantity} is cooking! (+{pts} pts)\n")
             time.sleep(1.5)
             return "OK", pts
         else:
@@ -284,69 +173,43 @@ class Chef(BasePlayer):                             # INHERITANCE: Chef IS-A Bas
             time.sleep(2)
             return "WRONG", -15
 
-    def __str__(self):                              # POLYMORPHISM: overrides BasePlayer.__str__
+    def __str__(self):
         return (f"{self.name_tag.display()} | Duty: Cooking | "
-                f"Correct: {self._correct_cooks} | "
-                f"Mistakes: {self._incorrect_cooks}")
+                f"Correct: {self._correct_cooks} | Mistakes: {self._incorrect_cooks}")
 
 
-# ═══════════════════════════════════════════════════════════
-# WAITER — Child class of BasePlayer
-# Seats groups and serves food
-# Inherits: name_tag, _is_busy, introduce(), _calc_points()
-#
-# POLYMORPHISM: perform_primary_duty() sets _seat_bonus = 3
-#   This flat bonus is added to every seating and serve score,
-#   meaning the Waiter's duty directly increases their points earned.
-# ═══════════════════════════════════════════════════════════
-
-class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A BasePlayer
+class Waiter(BasePlayer):
     def __init__(self, name):
-        super().__init__(name, "Waiter")            # reuses BasePlayer.__init__
-        self._groups_seated = 0                     # ENCAPSULATION: protected
-        self._groups_served = 0                     # ENCAPSULATION: protected
-        self._seat_bonus    = 0                     # default: no bonus until duty is called
+        super().__init__(name, "Waiter")
+        self._groups_seated = self._groups_served = 0
+        self._seat_bonus = 0
 
     @property
-    def groups_seated(self):
-        return self._groups_seated
+    def groups_seated(self): return self._groups_seated
 
     @property
-    def groups_served(self):
-        return self._groups_served
+    def groups_served(self): return self._groups_served
 
-    def perform_primary_duty(self):                 # POLYMORPHISM: overrides abstract method
-        """
-        Sets _seat_bonus = 3 — this flat bonus is added on top of the
-        speed score every time the Waiter seats or serves a group.
-        The duty call CHANGES how seat_group() and serve_food() score.
-        """
+    def perform_primary_duty(self):
         self._is_busy = True
         self._seat_bonus = 3
-        return (f"{self.name_tag.name} is serving tables 🍽️  "
-                f"[Duty Active: +{self._seat_bonus} pts per action]")
+        return f"{self.name_tag.name} is serving tables 🍽️  [Duty Active: +{self._seat_bonus} pts per action]"
 
     def seat_group(self, group, tables):
-        """Waiter picks a table and seats the group."""
         title = "Ma'am" if group.is_vip else "Sir"
-        print(f"  🚶 Group arrived! Leader: {group.leader_name} "
-              f"({group.size} person{'s' if group.size > 1 else ''})")
-        print(f"\n  [{self.name_tag.name}]: Welcome to Area 1 Pizzeria, "
-              f"{title} {group.leader_name}!\n")
+        print(f"  🚶 Group arrived! Leader: {group.leader_name} ({group.size} person{'s' if group.size > 1 else ''})")
+        print(f"\n  [{self.name_tag.name}]: Welcome to Area 1 Pizzeria, {title} {group.leader_name}!\n")
         print(f"  They want: {group.order.pizza} x{group.order.quantity}\n")
 
         print(f"  🪑  Tables:")
         valid_keys = []
         for t in tables:
-            if t.is_occupied:
-                marker = "❌ occupied"
-            elif t.capacity < group.size:
-                marker = "❌ too small"
+            if t.is_occupied:       marker = "❌ occupied"
+            elif t.capacity < group.size: marker = "❌ too small"
             else:
                 marker = "✅ available"
                 valid_keys.append(str(t.table_number))
-            print(f"     [{t.table_number}] Table {t.table_number} "
-                  f"(cap {t.capacity}) — {marker}")
+            print(f"     [{t.table_number}] Table {t.table_number} (cap {t.capacity}) — {marker}")
         print()
 
         if not valid_keys:
@@ -370,21 +233,15 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
                 print(f"\n  ⚠️  Invalid key. Try again.\n")
                 time.sleep(1)
                 continue
-
             chosen_table = next(t for t in tables if str(t.table_number) == k)
             chosen_table.seat(group)
             self._groups_seated += 1
-            elapsed = time.time() - start
-            # POLYMORPHISM IN ACTION: _seat_bonus set by perform_primary_duty()
-            # adds flat points on top of the speed score
-            pts = self._calc_points(elapsed) + self._seat_bonus
-            print(f"\n  ✅  Group seated at Table {chosen_table.table_number}! "
-                  f"(+{pts} pts)\n")
+            pts = self._calc_points(time.time() - start) + self._seat_bonus
+            print(f"\n  ✅  Group seated at Table {chosen_table.table_number}! (+{pts} pts)\n")
             time.sleep(1)
             return "OK", chosen_table, pts
 
     def serve_food(self, group):
-        """Waiter delivers cooked food to the table."""
         print(f"  🍕  {group.order.pizza} x{group.order.quantity} is ready!")
         print(f"  Press [S] to serve Table {group.table.table_number}.")
         start = time.time()
@@ -392,98 +249,63 @@ class Waiter(BasePlayer):                           # INHERITANCE: Waiter IS-A B
             k = TerminalUtils.getch()
             if k == "s":
                 self._groups_served += 1
-                elapsed = time.time() - start
-                # POLYMORPHISM IN ACTION: _seat_bonus applies here too
-                pts = self._calc_points(elapsed) + self._seat_bonus
-                print(f"\n  ✅  Served to Table {group.table.table_number}! "
-                      f"(+{pts} pts)\n")
+                pts = self._calc_points(time.time() - start) + self._seat_bonus
+                print(f"\n  ✅  Served to Table {group.table.table_number}! (+{pts} pts)\n")
                 time.sleep(1.5)
                 return "OK", pts
             elif k == "q":
                 return "QUIT", 0
 
-    def __str__(self):                              # POLYMORPHISM: overrides BasePlayer.__str__
+    def __str__(self):
         return (f"{self.name_tag.display()} | Duty: Serving | "
-                f"Seated: {self._groups_seated} | "
-                f"Served: {self._groups_served}")
+                f"Seated: {self._groups_seated} | Served: {self._groups_served}")
 
 
-# ═══════════════════════════════════════════════════════════
-# CASHIER — Child class of BasePlayer
-# Collects payment and gives correct change
-# Inherits: name_tag, _is_busy, introduce(), _calc_points()
-#
-# POLYMORPHISM: perform_primary_duty() sets _change_bonus = 2
-#   This flat bonus is added to every correct change score,
-#   meaning the Cashier's duty directly increases accuracy rewards.
-# ═══════════════════════════════════════════════════════════
-
-class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A BasePlayer
+class Cashier(BasePlayer):
     def __init__(self, name):
-        super().__init__(name, "Cashier")           # reuses BasePlayer.__init__
-        self._total_collected = 0                   # ENCAPSULATION: protected
-        self._correct_change  = 0                   # ENCAPSULATION: protected
-        self._wrong_change    = 0                   # ENCAPSULATION: protected
-        self._change_bonus    = 0                   # default: no bonus until duty is called
+        super().__init__(name, "Cashier")
+        self._total_collected = self._correct_change = self._wrong_change = 0
+        self._change_bonus = 0
 
     @property
-    def total_collected(self):
-        return self._total_collected
+    def total_collected(self): return self._total_collected
 
     @property
-    def correct_change(self):
-        return self._correct_change
+    def correct_change(self): return self._correct_change
 
     @property
-    def wrong_change(self):
-        return self._wrong_change
+    def wrong_change(self): return self._wrong_change
 
-    def perform_primary_duty(self):                 # POLYMORPHISM: overrides abstract method
-        """
-        Sets _change_bonus = 2 — this flat bonus is added on top of the
-        speed score every time the Cashier gives correct change.
-        The duty call CHANGES how collect_payment() scores.
-        """
+    def perform_primary_duty(self):
         self._is_busy = True
         self._change_bonus = 2
-        return (f"{self.name_tag.name} is at the register 💰  "
-                f"[Duty Active: +{self._change_bonus} pts per correct change]")
+        return f"{self.name_tag.name} is at the register 💰  [Duty Active: +{self._change_bonus} pts per correct change]"
 
     def collect_payment(self, group):
-        """Collects bill and asks cashier to select correct change."""
-        bill   = group.order.total_price
-        paid   = group.order.amount_paid
-        change = group.order.change
+        bill, paid, change = group.order.total_price, group.order.amount_paid, group.order.change
 
-        # Step A: collect
         print(f"  💵  Table {group.table.table_number} finished eating!")
-        print(f"     {group.order.pizza} x{group.order.quantity} "
-              f"@ ${group.order.unit_price} each")
-        print(f"     Total bill : ${bill}")
-        print(f"     Paid       : ${paid}")
+        print(f"     {group.order.pizza} x{group.order.quantity} @ ${group.order.unit_price} each")
+        print(f"     Total bill : ${bill}\n     Paid       : ${paid}")
         print(f"\n  Press [G] to collect payment.")
 
         while True:
             k = TerminalUtils.getch()
             if k == "g":
                 self._total_collected += paid
-                print(f"\n  ✅  ${paid} collected!")
-                print(f"  🧾  Bill was: ${bill}\n")
+                print(f"\n  ✅  ${paid} collected!\n  🧾  Bill was: ${bill}\n")
                 time.sleep(1.5)
                 break
             elif k == "q":
                 return "QUIT", 0
 
-        # Step B: give change
         print(f"  💵  Bill: ${bill}  |  Paid: ${paid}\n")
         print(f"  Pick the correct change to give back:\n")
 
         if change == 0:
-            options     = ["No change — $0"]
-            correct_idx = 0
+            options, correct_idx = ["No change — $0"], 0
         else:
-            wrong = set()
-            attempts = 0
+            wrong, attempts = set(), 0
             while len(wrong) < 2 and attempts < 50:
                 attempts += 1
                 fake = change + random.choice([-3, -2, -1, 1, 2, 3, 5])
@@ -494,7 +316,6 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
             correct_idx = options.index(f"${change}")
 
         TerminalUtils.print_choices(options)
-
         result = TerminalUtils.pick_from_choices(options, correct_idx)
         if result[0] == "QUIT":
             return "QUIT", 0
@@ -502,231 +323,165 @@ class Cashier(BasePlayer):                          # INHERITANCE: Cashier IS-A 
         elapsed, chosen = result
         if chosen == correct_idx:
             self._correct_change += 1
-            # POLYMORPHISM IN ACTION: _change_bonus set by perform_primary_duty()
-            # adds flat points on top of the speed score
             pts = self._calc_points(elapsed) + self._change_bonus
             tip = group.tip()
-            print(f"\n  ✅  Correct change! (+{pts} pts)")
-            print(f"  💰  {group.leader_name} left a tip: +{tip} pts\n")
+            print(f"\n  ✅  Correct change! (+{pts} pts)\n  💰  {group.leader_name} left a tip: +{tip} pts\n")
             time.sleep(1.5)
             return "OK", pts + tip
         else:
             self._wrong_change += 1
-            print(f"\n  ❌  Wrong change! Correct was "
-                  f"{options[correct_idx]}. (-15 pts)\n")
+            print(f"\n  ❌  Wrong change! Correct was {options[correct_idx]}. (-15 pts)\n")
             time.sleep(1.5)
             return "WRONG", -15
 
-    def __str__(self):                              # POLYMORPHISM: overrides BasePlayer.__str__
+    def __str__(self):
         return (f"{self.name_tag.display()} | Duty: Register | "
                 f"Collected: ${self._total_collected} | "
-                f"Correct: {self._correct_change} | "
-                f"Wrong: {self._wrong_change}")
+                f"Correct: {self._correct_change} | Wrong: {self._wrong_change}")
 
-
-# ═══════════════════════════════════════════════════════════
-# ORDER — Full details of a group's food order
-# ENCAPSULATION: all price/payment data protected with getters
-# ═══════════════════════════════════════════════════════════
 
 class Order:
     PIZZA_PRICES = {
-        "Margherita": 8,  "Pepperoni": 10, "Hawaiian": 9,
-        "Veggie": 7,      "BBQ Chicken": 11, "Supreme": 12,
+        "Margherita": 8, "Pepperoni": 10, "Hawaiian": 9,
+        "Veggie": 7, "BBQ Chicken": 11, "Supreme": 12,
     }
 
     def __init__(self, pizza, quantity):
-        self._pizza      = pizza                    # ENCAPSULATION: protected
-        self._quantity   = quantity                 # ENCAPSULATION: protected
+        self._pizza = pizza
+        self._quantity = quantity
         self._unit_price = self.PIZZA_PRICES.get(pizza, 10)
-        self._total      = self._unit_price * quantity
-        self._paid       = self._total + random.choice([0, 1, 2, 5, 10])
+        self._total = self._unit_price * quantity
+        self._paid = self._total + random.choice([0, 1, 2, 5, 10])
 
     @property
-    def pizza(self):
-        return self._pizza
+    def pizza(self): return self._pizza
 
     @property
-    def quantity(self):
-        return self._quantity
+    def quantity(self): return self._quantity
 
     @property
-    def unit_price(self):
-        return self._unit_price
+    def unit_price(self): return self._unit_price
 
     @property
-    def total_price(self):
-        return self._total
+    def total_price(self): return self._total
 
     @property
-    def amount_paid(self):
-        return self._paid
+    def amount_paid(self): return self._paid
 
     @property
-    def change(self):
-        return self._paid - self._total
+    def change(self): return self._paid - self._total
 
     def __str__(self):
-        return (f"{self._pizza} x{self._quantity} | "
-                f"${self._unit_price} each | "
-                f"Total: ${self._total} | Paid: ${self._paid}")
+        return f"{self._pizza} x{self._quantity} | ${self._unit_price} each | Total: ${self._total} | Paid: ${self._paid}"
 
-
-# ═══════════════════════════════════════════════════════════
-# CUSTOMER — Parent class
-# CHILD CLASS: VipCustomer
-# tip_amount() is POLYMORPHIC — different per customer type
-# ═══════════════════════════════════════════════════════════
 
 class Customer(_IntroduceMixin):
-    NAMES = ["Luigi","Yoshi","Koopa","Shy Guy","Toad Jr.",
-             "Boo","Birdo","Lakitu","Bullet Bill","Bob-omb"]
+    NAMES = ["Luigi", "Yoshi", "Koopa", "Shy Guy", "Toad Jr.",
+             "Boo", "Birdo", "Lakitu", "Bullet Bill", "Bob-omb"]
 
     def __init__(self, name, money):
-        self.name_tag = NameTag(name, "Customer")   # COMPOSITION: HAS-A NameTag
-        self._money   = money                       # ENCAPSULATION: protected
+        self.name_tag = NameTag(name, "Customer")
+        self._money = money
 
     @property
-    def money(self):                                # ENCAPSULATION: getter
-        return self._money
+    def money(self): return self._money
 
     @money.setter
-    def money(self, amount):                        # ENCAPSULATION: setter + validation
-        if amount < 0:
-            raise ValueError("Money cannot be negative.")
+    def money(self, amount):
+        if amount < 0: raise ValueError("Money cannot be negative.")
         self._money = amount
 
-    def tip_amount(self):                           # POLYMORPHISM: overridden in VipCustomer
-        return random.randint(1, 5)
+    def tip_amount(self): return random.randint(1, 5)
 
-    def __str__(self):                              # POLYMORPHISM: overridden in VipCustomer
-        return f"{self.name_tag.display()} | Budget: ${self._money}"
+    def __str__(self): return f"{self.name_tag.display()} | Budget: ${self._money}"
 
 
-# ───────────────────────────────────────────────────────────
-class VipCustomer(Customer):                        # INHERITANCE: VipCustomer IS-A Customer
+class VipCustomer(Customer):
     NAMES = ["Peach", "Daisy", "Rosalina", "Pauline"]
 
     def __init__(self, name, money):
-        super().__init__(name, money)               # reuses Customer.__init__
+        super().__init__(name, money)
         self.name_tag.role = "VipCustomer"
 
-    def tip_amount(self):                           # POLYMORPHISM: VIPs tip 1-10 vs 1-5
-        return random.randint(1, 10)
+    def tip_amount(self): return random.randint(1, 10)
 
-    def __str__(self):                              # POLYMORPHISM: adds VIP Perks line
-        return (f"{self.name_tag.display()} | "
-                f"Budget: ${self.money} | VIP Perks: Yes")
+    def __str__(self):
+        return f"{self.name_tag.display()} | Budget: ${self.money} | VIP Perks: Yes"
 
-
-# ═══════════════════════════════════════════════════════════
-# GROUP — A group of customers dining together
-# COMPOSITION: HAS-A Customer (leader), HAS-A Order, HAS-A Table
-# ═══════════════════════════════════════════════════════════
 
 class Group:
     def __init__(self, leader, size, order):
-        self._leader = leader                       # COMPOSITION: HAS-A Customer
-        self._size   = size                         # ENCAPSULATION: protected
-        self._order  = order                        # COMPOSITION: HAS-A Order
-        self._table  = None                         # COMPOSITION: HAS-A Table (set on seating)
+        self._leader = leader
+        self._size = size
+        self._order = order
+        self._table = None
 
     @property
-    def leader_name(self):
-        return self._leader.name_tag.name
+    def leader_name(self): return self._leader.name_tag.name
 
     @property
-    def is_vip(self):
-        return isinstance(self._leader, VipCustomer)
+    def is_vip(self): return isinstance(self._leader, VipCustomer)
 
     @property
-    def size(self):
-        return self._size
+    def size(self): return self._size
 
     @property
-    def order(self):
-        return self._order
+    def order(self): return self._order
 
     @property
-    def table(self):
-        return self._table
+    def table(self): return self._table
 
     @table.setter
-    def table(self, t):                             # ENCAPSULATION: controlled setter
-        self._table = t
+    def table(self, t): self._table = t
 
-    def tip(self):
-        # POLYMORPHISM: returns 1-5 for Customer, 1-10 for VipCustomer
-        return self._leader.tip_amount()
+    def tip(self): return self._leader.tip_amount()
 
     def __str__(self):
-        return (f"Group of {self._size} | "
-                f"Leader: {self.leader_name} | "
-                f"Order: {self._order}")
+        return f"Group of {self._size} | Leader: {self.leader_name} | Order: {self._order}"
 
-
-# ═══════════════════════════════════════════════════════════
-# TABLE — A physical dining table
-# ENCAPSULATION: capacity validated, group access controlled
-# ═══════════════════════════════════════════════════════════
 
 class Table:
     def __init__(self, table_number, capacity):
-        self._table_number  = table_number          # ENCAPSULATION: protected
-        self._capacity      = capacity              # ENCAPSULATION: protected
-        self._current_group = None                  # COMPOSITION: HAS-A Group when occupied
+        self._table_number = table_number
+        self._capacity = capacity
+        self._current_group = None
 
     @property
-    def table_number(self):
-        return self._table_number
+    def table_number(self): return self._table_number
 
     @property
-    def capacity(self):
-        return self._capacity
+    def capacity(self): return self._capacity
 
     @capacity.setter
-    def capacity(self, value):                      # ENCAPSULATION: validates input
-        if value < 1:
-            raise ValueError("Capacity must be at least 1.")
+    def capacity(self, value):
+        if value < 1: raise ValueError("Capacity must be at least 1.")
         self._capacity = value
 
     @property
-    def is_occupied(self):
-        return self._current_group is not None
+    def is_occupied(self): return self._current_group is not None
 
     @property
-    def is_available(self):
-        return self._current_group is None
+    def is_available(self): return self._current_group is None
 
     def seat(self, group):
-        """Seat a group and link the table back to the group."""
         self._current_group = group
         group.table = self
 
-    def clear(self):
-        """Free the table when the group leaves."""
-        self._current_group = None
+    def clear(self): self._current_group = None
 
     def __str__(self):
-        status = (f"occupied — group of {self._current_group.size}"
-                  if self.is_occupied else "empty")
+        status = f"occupied — group of {self._current_group.size}" if self.is_occupied else "empty"
         return f"Table {self._table_number} | Cap: {self._capacity} | {status}"
 
 
-# ═══════════════════════════════════════════════════════════
-# RESTAURANTCLOCK — Tracks in-game time
-# ENCAPSULATION: all time data protected
-# ═══════════════════════════════════════════════════════════
-
 class RestaurantClock:
     def __init__(self, start_hour=7):
-        self._dilation   = 360                      # ENCAPSULATION: protected
-        self._start_real = time.time()              # ENCAPSULATION: protected
-        self._offset     = start_hour * 3600        # ENCAPSULATION: protected
+        self._dilation = 360
+        self._start_real = time.time()
+        self._offset = start_hour * 3600
 
     def get_game_time(self):
-        elapsed = time.time() - self._start_real
-        total   = int((elapsed * self._dilation + self._offset) // 60)
+        total = int(((time.time() - self._start_real) * self._dilation + self._offset) // 60)
         return (total // 60) % 24, total % 60
 
     def get_phase(self, hour):
@@ -740,139 +495,98 @@ class RestaurantClock:
         return f"{h:02d}:{m:02d}"
 
 
-# ═══════════════════════════════════════════════════════════
-# RESTAURANT — Abstract parent for all branches
-# ABSTRACTION: cannot be instantiated — forces subclasses to
-#   implement set_pizza_menu() and run_shift()
-# ═══════════════════════════════════════════════════════════
-
-class Restaurant(ABC):                              # ABSTRACTION
+class Restaurant(ABC):
     def __init__(self, name):
-        self._name   = name                         # ENCAPSULATION: protected
-        self._menu   = []                           # ENCAPSULATION: protected
-        self._tables = []                           # COMPOSITION: HAS-A list of Tables
-        self._staff  = []                           # COMPOSITION: HAS-A list of BasePlayer
-        self._clock  = None                         # COMPOSITION: HAS-A RestaurantClock
+        self._name = name
+        self._menu = []
+        self._tables = []
+        self._staff = []
+        self._clock = None
 
     @property
-    def name(self):
-        return self._name
+    def name(self): return self._name
 
     @property
-    def menu(self):
-        return list(self._menu)                     # returns copy — protects internal list
+    def menu(self): return list(self._menu)
 
     def _set_menu(self, items):
-        """
-        ENCAPSULATION: protected method — only this class and subclasses
-        can assign the menu. Validates that items is a non-empty list.
-        """
         if not items or not isinstance(items, list):
             raise ValueError("Menu must be a non-empty list.")
         self._menu = items
 
-    @abstractmethod                                 # ABSTRACTION: subclass MUST implement
-    def set_pizza_menu(self):
-        pass
+    @abstractmethod
+    def set_pizza_menu(self): pass
 
-    def set_clock(self, clock):
-        self._clock = clock
+    def set_clock(self, clock): self._clock = clock
 
-    def add_table(self, table):
-        self._tables.append(table)
+    def add_table(self, table): self._tables.append(table)
 
-    def add_staff(self, member):
-        self._staff.append(member)
+    def add_staff(self, member): self._staff.append(member)
 
     def get_staff_by_type(self, staff_type):
-        """Return first staff member of the given type."""
-        return next((s for s in self._staff
-                     if isinstance(s, staff_type)), None)
+        return next((s for s in self._staff if isinstance(s, staff_type)), None)
 
     def show_staff(self):
         print(f"\n  👥  Staff at {self._name}:")
-        for s in self._staff:
-            print(f"     {s.introduce()}")
+        for s in self._staff: print(f"     {s.introduce()}")
         print()
 
     def show_tables(self):
         print(f"  🪑  Tables:")
-        for t in self._tables:
-            print(f"     {t}")
+        for t in self._tables: print(f"     {t}")
         print()
 
-    @abstractmethod                                 # ABSTRACTION: subclass MUST implement
-    def run_shift(self):
-        """Each branch runs its own shift loop."""
-        pass
+    @abstractmethod
+    def run_shift(self): pass
 
-    def __str__(self):                              # POLYMORPHISM: overridden in subclasses
+    def __str__(self):
         return (f"=== {self._name} ===\n"
                 f"Menu  : {', '.join(self._menu)}\n"
-                f"Tables: {len(self._tables)}\n"
-                f"Staff : {len(self._staff)}")
+                f"Tables: {len(self._tables)}\nStaff : {len(self._staff)}")
 
 
-# ═══════════════════════════════════════════════════════════
-# AREA1BRANCH — Child class of Restaurant
-# The playable branch — run_shift() is the full game loop
-# ═══════════════════════════════════════════════════════════
-
-class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch IS-A Restaurant
-
+class Area1Branch(Restaurant):
     DIFFICULTY = {
-        1: {"label": "⭐  EASY",     "choices": 3, "gap": 5},
-        2: {"label": "⭐⭐  MEDIUM",  "choices": 4, "gap": 4},
-        3: {"label": "⭐⭐⭐  HARD",  "choices": 5, "gap": 3},
+        1: {"label": "⭐  EASY",    "choices": 3, "gap": 5},
+        2: {"label": "⭐⭐  MEDIUM", "choices": 4, "gap": 4},
+        3: {"label": "⭐⭐⭐  HARD", "choices": 5, "gap": 3},
     }
 
     def __init__(self, name):
-        super().__init__(name)                      # reuses Restaurant.__init__
-        self._score           = 0                  # ENCAPSULATION: protected
-        self._served          = 0                  # ENCAPSULATION: protected
-        self._day             = 1                  # ENCAPSULATION: protected
-        self._total_collected = 0                  # ENCAPSULATION: protected
+        super().__init__(name)
+        self._score = self._served = self._day = 0
+        self._day = 1
+        self._total_collected = 0
 
     @property
-    def score(self):
-        return self._score
+    def score(self): return self._score
 
     @property
-    def served(self):
-        return self._served
+    def served(self): return self._served
 
-    def set_pizza_menu(self):                       # POLYMORPHISM: overrides abstract method
-        self._set_menu(["Margherita", "Pepperoni", "Hawaiian",
-                        "Veggie", "BBQ Chicken", "Supreme"])
+    def set_pizza_menu(self):
+        self._set_menu(["Margherita", "Pepperoni", "Hawaiian", "Veggie", "BBQ Chicken", "Supreme"])
 
-    def _get_diff(self):
-        return self.DIFFICULTY[min(self._day, 3)]
+    def _get_diff(self): return self.DIFFICULTY[min(self._day, 3)]
 
     def _make_group(self):
-        """Spawn a random customer group with an order."""
         is_vip = random.random() < 0.2
         if is_vip:
-            name   = random.choice(VipCustomer.NAMES)
+            name = random.choice(VipCustomer.NAMES)
             leader = VipCustomer(name, random.randint(80, 150))
         else:
-            name   = random.choice(Customer.NAMES)
+            name = random.choice(Customer.NAMES)
             leader = Customer(name, random.randint(15, 50))
-
         max_cap = max(t.capacity for t in self._tables)
-        size    = random.randint(1, max_cap)
-        pizza   = random.choice(self._menu)
-        order   = Order(pizza, size)
-        return Group(leader, size, order)
+        pizza = random.choice(self._menu)
+        return Group(leader, random.randint(1, max_cap), Order(pizza, random.randint(1, max_cap)))
 
     def _show_header(self, role_label):
         diff = self._get_diff()
         TerminalUtils.clear()
         TerminalUtils.divider()
-        print(f"  🍕  {self._name}  |  {self._clock.time_str()}  "
-              f"{self._clock.get_phase(self._clock.get_game_time()[0])}")
-        print(f"  📅  Day {self._day}  {diff['label']}  |  "
-              f"⭐ Score: {self._score}  |  "
-              f"👥 Served: {self._served}")
+        print(f"  🍕  {self._name}  |  {self._clock.time_str()}  {self._clock.get_phase(self._clock.get_game_time()[0])}")
+        print(f"  📅  Day {self._day}  {diff['label']}  |  ⭐ Score: {self._score}  |  👥 Served: {self._served}")
         TerminalUtils.divider()
         print(f"\n  👤  Current Role: {role_label}\n")
 
@@ -893,12 +607,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         print(f"\n  Rest up! Press ENTER to start Day {self._day + 1} shift...")
         input()
 
-    def run_shift(self):                            # POLYMORPHISM: overrides abstract method
-        """
-        Full game loop. Calls perform_primary_duty() on each staff member
-        before their stage — this activates their stat modifier so their
-        scoring is affected for that round. That's the polymorphism working.
-        """
+    def run_shift(self):
         if self._clock is None:
             raise RuntimeError("Set a clock first: branch.set_clock(clock)")
 
@@ -910,13 +619,12 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
             print("  ❌  Missing staff! Need a Waiter, Chef, and Cashier.")
             return
 
-        # intro screen
         TerminalUtils.clear()
         TerminalUtils.divider()
         print(f"  🍕  {self._name}")
         TerminalUtils.divider()
         self.show_staff()
-        self.show_tables()
+        self.show_tables()  
         print(f"Waiter  → [1/2/3] pick table  (+3 seat bonus from duty)")
         print(f"Chef    → [1/2/3] correct pizza  (1.5x reaction window from duty)")
         print(f"Cashier → [G] collect, [1/2/3] correct change  (+2 pts from duty)")
@@ -927,26 +635,19 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         print(f"\n  Press ENTER to start the shift!\n")
         input()
 
-        # main loop
         while True:
             diff = self._get_diff()
-
-            # arrival gap screen
             TerminalUtils.clear()
             TerminalUtils.divider()
             print(f"  🍕  {self._name}  |  {self._clock.time_str()}")
-            print(f"  📅  Day {self._day}  {diff['label']}  |  "
-                  f"⭐ Score: {self._score}  |  "
-                  f"👥 Served: {self._served}")
+            print(f"  📅  Day {self._day}  {diff['label']}  |  ⭐ Score: {self._score}  |  👥 Served: {self._served}")
             TerminalUtils.divider()
             self.show_tables()
-            print(f"  ⏳  Next group in {diff['gap']} seconds... "
-                  f"(Q to end shift)\n")
+            print(f"  ⏳  Next group in {diff['gap']} seconds... (Q to end shift)\n")
             time.sleep(diff["gap"])
 
             group = self._make_group()
 
-            # STAGE 1: Waiter performs duty (activates _seat_bonus), then seats group
             self._show_header(f"WAITER  —  {waiter.name_tag.name}")
             print(f"  {waiter.perform_primary_duty()}\n")
             status, table, pts = waiter.seat_group(group, self._tables)
@@ -957,7 +658,6 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
                 continue
             self._score += pts
 
-            # STAGE 2: Chef performs duty (activates _cook_multiplier), then cooks
             self._show_header(f"CHEF  —  {chef.name_tag.name}")
             print(f"  {chef.perform_primary_duty()}\n")
             status, pts = chef.cook(group.order, self._menu, diff["choices"])
@@ -968,22 +668,17 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
                 continue
             self._score += pts
 
-            # STAGE 3: Waiter performs duty again, then serves food
             self._show_header(f"WAITER  —  {waiter.name_tag.name}")
             print(f"  {waiter.perform_primary_duty()}\n")
             status, pts = waiter.serve_food(group)
             if status == "QUIT":  break
             self._score += pts
 
-            # STAGE 4: Cashier performs duty (activates _change_bonus), then collects
             self._show_header(f"CASHIER  —  {cashier.name_tag.name}")
             print(f"  {cashier.perform_primary_duty()}\n")
             status, pts = cashier.collect_payment(group)
             if status == "QUIT":  break
-            if pts < 0:
-                self._score = max(0, self._score + pts)
-            else:
-                self._score += pts
+            self._score = max(0, self._score + pts) if pts < 0 else self._score + pts
 
             self._total_collected += group.order.amount_paid
             table.clear()
@@ -993,7 +688,6 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
                 self._day_summary()
                 self._day += 1
 
-        # shift ended
         self._end_of_shift(waiter, chef, cashier)
 
     def _end_of_shift(self, waiter, chef, cashier):
@@ -1007,9 +701,7 @@ class Area1Branch(Restaurant):                      # INHERITANCE: Area1Branch I
         print(f"  Final Score      : {self._score} pts")
         TerminalUtils.divider("─")
         print(f"\n  📊  Staff Performance:")
-        print(f"  {waiter}")
-        print(f"  {chef}")
-        print(f"  {cashier}")
+        for s in [waiter, chef, cashier]: print(f"  {s}")
         TerminalUtils.divider("─")
         sc = self._score
         if   sc >= 500: print(f"  🥇  LEGENDARY STAFF — Unstoppable!")
