@@ -440,6 +440,17 @@ class GuestStaff(IStaff):
 
     def __str__(self) -> str:
         return f"[{self._role}] {self._name} (guest)"
+    
+set_istaff = [
+    GuestStaff, BaseStaff
+]
+
+
+def istaff(istaff: IStaff):
+    istaff.reset_busy
+
+
+istaff(set_istaff)
 
 
 class Chef(BaseStaff, ICook):
