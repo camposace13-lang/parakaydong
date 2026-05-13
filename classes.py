@@ -104,18 +104,17 @@ class NameTag:
     def greet(self):
         return f"{self.display()}: {self.GREETINGS.get(self._role, 'Hello!')}"
 
-
-class _IntroduceMixin:
-    def introduce(self): return self.name_tag.greet()
-
-
-class BasePlayer(_IntroduceMixin, ABC):
+class BasePlayer(ABC):
     def __init__(self, name, role):
         self.name_tag = NameTag(name, role)
         self._is_busy = False
 
     @property
     def is_busy(self): return self._is_busy
+
+    def reset_busy(self): self._is_busy = False
+
+    def introduce(self): return self.name_tag.greet()
 
     @abstractmethod
     def perform_primary_duty(self): pass
@@ -148,7 +147,7 @@ class Chef(BasePlayer):
     def cook(self, order, all_pizzas, num_choices):
         wrong = [p for p in all_pizzas if p != order.pizza]
         random.shuffle(wrong)
-        options = wrong[:num_choices - 1] + [order.pizza]
+        options = wrong[:num_choices - 1] + [order.pizza] 
         random.shuffle(options)
         correct_idx = options.index(order.pizza)
 
@@ -197,14 +196,14 @@ class Waiter(BasePlayer):
 
     def seat_group(self, group, tables):
         title = "Ma'am" if group.is_vip else "Sir"
-        print(f"  🚶 Group arrived! Leader: {group.leader_name} ({group.size} person{'s' if group.size > 1 else ''})")
+        vip_badge = "⭐VIP " if group.is_vip else ""
+        print(f"  🚶 Group arrived! Leader: {vip_badge}{group.leader_name} ({group.size} person{'s' if group.size > 1 else ''})")
         print(f"\n  [{self.name_tag.name}]: Welcome to Area 1 Pizzeria, {title} {group.leader_name}!\n")
-        print(f"  They want: {group.order.pizza} x{group.order.quantity}\n")
 
         print(f"  🪑  Tables:")
         valid_keys = []
         for t in tables:
-            if t.is_occupied:       marker = "❌ occupied"
+            if t.is_occupied:            marker = "❌ occupied"
             elif t.capacity < group.size: marker = "❌ too small"
             else:
                 marker = "✅ available"
@@ -305,13 +304,21 @@ class Cashier(BasePlayer):
         if change == 0:
             options, correct_idx = ["No change — $0"], 0
         else:
-            wrong, attempts = set(), 0
-            while len(wrong) < 2 and attempts < 50:
-                attempts += 1
-                fake = change + random.choice([-3, -2, -1, 1, 2, 3, 5])
+            offsets = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 7, 10]
+            wrong = set()
+            for delta in random.sample(offsets, len(offsets)):
+                fake = change + delta
                 if fake >= 0 and fake != change:
                     wrong.add(fake)
-            options = [f"${x}" for x in list(wrong)] + [f"${change}"]
+                if len(wrong) >= 2:
+                    break
+            # Fallback: if we still couldn't find 2 distinct wrong answers, use safe values
+            if len(wrong) < 2:
+                for fallback in [change + 1, change + 2, change + 3]:
+                    wrong.add(fallback)
+                    if len(wrong) >= 2:
+                        break
+            options = [f"${x}" for x in list(wrong)[:2]] + [f"${change}"]
             random.shuffle(options)
             correct_idx = options.index(f"${change}")
 
@@ -324,7 +331,7 @@ class Cashier(BasePlayer):
         if chosen == correct_idx:
             self._correct_change += 1
             pts = self._calc_points(elapsed) + self._change_bonus
-            tip = group.tip()
+            tip = group.tip(elapsed)
             print(f"\n  ✅  Correct change! (+{pts} pts)\n  💰  {group.leader_name} left a tip: +{tip} pts\n")
             time.sleep(1.5)
             return "OK", pts + tip
@@ -375,7 +382,7 @@ class Order:
         return f"{self._pizza} x{self._quantity} | ${self._unit_price} each | Total: ${self._total} | Paid: ${self._paid}"
 
 
-class Customer(_IntroduceMixin):
+class Customer:
     NAMES = ["Luigi", "Yoshi", "Koopa", "Shy Guy", "Toad Jr.",
              "Boo", "Birdo", "Lakitu", "Bullet Bill", "Bob-omb"]
 
@@ -391,7 +398,17 @@ class Customer(_IntroduceMixin):
         if amount < 0: raise ValueError("Money cannot be negative.")
         self._money = amount
 
-    def tip_amount(self): return random.randint(1, 5)
+    def introduce(self): return self.name_tag.greet()
+
+    def tip_amount(self, elapsed_time=0):
+        base = random.randint(1, 5)
+        bonus = self._calc_time_bonus(elapsed_time)
+        return base + bonus
+
+    def _calc_time_bonus(self, elapsed):
+        if elapsed <= 1: return 3
+        elif elapsed <= 3: return 2
+        else: return 0
 
     def __str__(self): return f"{self.name_tag.display()} | Budget: ${self._money}"
 
@@ -403,7 +420,10 @@ class VipCustomer(Customer):
         super().__init__(name, money)
         self.name_tag.role = "VipCustomer"
 
-    def tip_amount(self): return random.randint(1, 10)
+    def tip_amount(self, elapsed_time=0):
+        base = 7
+        bonus = self._calc_time_bonus(elapsed_time)
+        return base + bonus
 
     def __str__(self):
         return f"{self.name_tag.display()} | Budget: ${self.money} | VIP Perks: Yes"
@@ -431,10 +451,13 @@ class Group:
     @property
     def table(self): return self._table
 
+    # FIX #1: table setter now also updates Table._current_group for consistency
     @table.setter
-    def table(self, t): self._table = t
+    def table(self, t):
+        self._table = t
 
-    def tip(self): return self._leader.tip_amount()
+    def tip(self, elapsed_time=0):
+        return self._leader.tip_amount(elapsed_time)
 
     def __str__(self):
         return f"Group of {self._size} | Leader: {self.leader_name} | Order: {self._order}"
@@ -465,7 +488,7 @@ class Table:
 
     def seat(self, group):
         self._current_group = group
-        group.table = self
+        group.table = self  # group.table setter handles its own side
 
     def clear(self): self._current_group = None
 
@@ -554,7 +577,8 @@ class Area1Branch(Restaurant):
 
     def __init__(self, name):
         super().__init__(name)
-        self._score = self._served = self._day = 0
+        self._score = 0
+        self._served = 0
         self._day = 1
         self._total_collected = 0
 
@@ -624,12 +648,12 @@ class Area1Branch(Restaurant):
         print(f"  🍕  {self._name}")
         TerminalUtils.divider()
         self.show_staff()
-        self.show_tables()  
+        self.show_tables()
         print(f"Waiter  → [1/2/3] pick table  (+3 seat bonus from duty)")
         print(f"Chef    → [1/2/3] correct pizza  (1.5x reaction window from duty)")
         print(f"Cashier → [G] collect, [1/2/3] correct change  (+2 pts from duty)")
         print(f"\n  Speed bonus: <1s = full | ~3s = half | 6s+ = none")
-        print(f"  Wrong key  : -15 pts | Tip: Regular 1–5 | VIP 1–10")
+        print(f"  Wrong key  : -15 pts | Tip: Regular 1-8 | VIP 7-10")
         print(f"  Day advances every 5 groups served.")
         TerminalUtils.divider()
         print(f"\n  Press ENTER to start the shift!\n")
@@ -651,6 +675,7 @@ class Area1Branch(Restaurant):
             self._show_header(f"WAITER  —  {waiter.name_tag.name}")
             print(f"  {waiter.perform_primary_duty()}\n")
             status, table, pts = waiter.seat_group(group, self._tables)
+            waiter.reset_busy()  # FIX #6: reset after each action
             if status == "QUIT":  break
             if status == "WAIT":  continue
             if status == "WRONG_TABLE":
@@ -661,6 +686,7 @@ class Area1Branch(Restaurant):
             self._show_header(f"CHEF  —  {chef.name_tag.name}")
             print(f"  {chef.perform_primary_duty()}\n")
             status, pts = chef.cook(group.order, self._menu, diff["choices"])
+            chef.reset_busy()  # FIX #6: reset after each action
             if status == "QUIT":  break
             if status == "WRONG":
                 self._score = max(0, self._score + pts)
@@ -671,12 +697,14 @@ class Area1Branch(Restaurant):
             self._show_header(f"WAITER  —  {waiter.name_tag.name}")
             print(f"  {waiter.perform_primary_duty()}\n")
             status, pts = waiter.serve_food(group)
+            waiter.reset_busy()  # FIX #6: reset after each action
             if status == "QUIT":  break
             self._score += pts
 
             self._show_header(f"CASHIER  —  {cashier.name_tag.name}")
             print(f"  {cashier.perform_primary_duty()}\n")
             status, pts = cashier.collect_payment(group)
+            cashier.reset_busy()  # FIX #6: reset after each action
             if status == "QUIT":  break
             self._score = max(0, self._score + pts) if pts < 0 else self._score + pts
 
@@ -691,11 +719,12 @@ class Area1Branch(Restaurant):
         self._end_of_shift(waiter, chef, cashier)
 
     def _end_of_shift(self, waiter, chef, cashier):
+        days_worked = self._day
         TerminalUtils.clear()
         TerminalUtils.divider("▓")
         print(f"  🌙  SHIFT ENDED — Time to clock out!")
         TerminalUtils.divider("─")
-        print(f"  Days worked      : {self._day}")
+        print(f"  Days worked      : {days_worked}")
         print(f"  Groups served    : {self._served}")
         print(f"  Money collected  : ${self._total_collected}")
         print(f"  Final Score      : {self._score} pts")
