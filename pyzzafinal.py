@@ -4,179 +4,146 @@ from abc import ABC, abstractmethod
 
 # =============================================================================
 #  SOLID LEGEND
-#  Every principle is tagged inline with the markers below.
-#  Look for the tags anywhere a principle is actively applied:
-#
 #  [S] Single Responsibility  — one class, one reason to change
 #  [O] Open / Closed          — open for extension, closed for modification
-#  [L] Liskov Substitution    — subclasses can replace their parent safely
-#  [I] Interface Segregation  — clients only depend on methods they use
+#  [L] Liskov Substitution    — subclasses safely replace their parent
+#  [I] Interface Segregation  — clients depend only on methods they use
 #  [D] Dependency Inversion   — depend on abstractions, not concretes
+#
+#  DRY LEGEND
+#  [DRY] Duplication eliminated by extracting shared logic to a base class,
+#        template method, or helper — subclasses override only what differs.
 # =============================================================================
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  ABSTRACTIONS
+#
+#  [I] Interfaces are deliberately narrow:
+#      • IBusyTrackable  — staff with a busy-flag life-cycle
+#      • IStaff          — identity only (does NOT force busy-tracking)
+#      • IDutyActivatable— unifies activate_duty() across cook/cashier/seater  [DRY]
+#      • ISeater, ICook, IPaymentCollector — role-specific operations
+#      • IDifficultyConfig, IGroupFactory, ISummaryDisplay, IChallengeBuilder,
+#        IBranchRepository — infrastructure seams
 # ─────────────────────────────────────────────────────────────────────────────
 
+class IBusyTrackable(ABC):
+    """Staff whose availability can be toggled."""        # [I] split from IStaff
+
+    @property
+    @abstractmethod
+    def is_busy(self) -> bool: pass
+
+    @abstractmethod
+    def reset_busy(self) -> None: pass
+
+
 class IStaff(ABC):
-    """Base interface for any staff member."""
+    """Identity contract only — not every staff member tracks busy state."""  # [I]
 
     @property
     @abstractmethod
-    def name(self) -> str:
-        pass
+    def name(self) -> str: pass
 
     @property
     @abstractmethod
-    def role(self) -> str:
-        pass
+    def role(self) -> str: pass
 
     @abstractmethod
-    def introduce(self) -> str:
-        pass
+    def introduce(self) -> str: pass
+
+
+class IDutyActivatable(ABC):
+    """Any staff role that can be 'activated' for a turn."""  # [I] [DRY]
 
     @abstractmethod
-    def reset_busy(self) -> None:
-        pass
+    def activate_duty(self) -> str: pass
 
 
-class ISeater(ABC):
-    """Interface for staff that can seat and serve customers."""
+class ISeater(IDutyActivatable):           # [I] seater IS duty-activatable
+    @abstractmethod
+    def seat_group(self, group, tables) -> tuple: pass
 
     @abstractmethod
-    def seat_group(self, group, tables) -> tuple:
-        pass
+    def serve_food(self, group) -> tuple: pass
 
+
+class ICook(IDutyActivatable):             # [I] cook IS duty-activatable
     @abstractmethod
-    def serve_food(self, group) -> tuple:
-        pass
+    def cook(self, order, all_pizzas: list, num_choices: int) -> tuple: pass
 
 
-class ICook(ABC):
-    """Interface for staff that cook orders."""
-
+class IPaymentCollector(IDutyActivatable): # [I] cashier IS duty-activatable
     @abstractmethod
-    def cook(self, order, all_pizzas: list, num_choices: int) -> tuple:
-        pass
-
-    @abstractmethod
-    def activate_duty(self) -> str:
-        pass
-
-
-class IPaymentCollector(ABC):
-    """Interface for staff that collect payments."""
-
-    @abstractmethod
-    def collect_payment(self, group) -> tuple:
-        pass
-
-    @abstractmethod
-    def activate_duty(self) -> str:
-        pass
+    def collect_payment(self, group) -> tuple: pass
 
 
 class IDifficultyConfig(ABC):
-    """Interface for difficulty-level configuration."""
+    @abstractmethod
+    def for_day(self, day: int) -> dict: pass
 
     @abstractmethod
-    def for_day(self, day: int) -> dict:
-        pass
-
-    @abstractmethod
-    def available_days(self) -> list:
-        pass
+    def available_days(self) -> list: pass
 
 
 class IGroupFactory(ABC):
-    """Interface for customer group creation."""
+    @abstractmethod
+    def create(self): pass
 
     @abstractmethod
-    def create(self):
-        pass
-
-    @abstractmethod
-    def set_tables(self, tables: list) -> None:
-        pass
+    def set_tables(self, tables: list) -> None: pass
 
 
 class ISummaryDisplay(ABC):
-    """Interface for end-of-day and end-of-shift screens."""
+    @abstractmethod
+    def show_day_end(self, day: int, served: int, score: int) -> None: pass
 
     @abstractmethod
-    def show_day_end(self, day: int, served: int, score: int) -> None:
-        pass
-
-    @abstractmethod
-    def show_shift_end(self, score: int, served: int, staff: list) -> None:
-        pass
+    def show_shift_end(self, score: int, served: int, staff: list) -> None: pass
 
 
 class IChallengeBuilder(ABC):
-    """Interface for building multiple-choice challenge options."""
+    @abstractmethod
+    def build_pizza_options(self, correct_pizza: str, all_pizzas: list,
+                            num_choices: int) -> tuple: pass
 
     @abstractmethod
-    def build_pizza_options(self, correct_pizza: str, all_pizzas: list, num_choices: int) -> tuple:
-        pass
-
-    @abstractmethod
-    def build_change_options(self, correct_change: int) -> tuple:
-        pass
+    def build_change_options(self, correct_change: int) -> tuple: pass
 
 
 class IBranchRepository(ABC):
-    """Interface for reading branch configuration (staff, tables, menu, clock)."""
+    @property
+    @abstractmethod
+    def name(self) -> str: pass
 
     @property
     @abstractmethod
-    def name(self) -> str:
-        pass
+    def menu(self) -> list: pass
 
     @property
     @abstractmethod
-    def menu(self) -> list:
-        pass
+    def tables(self) -> list: pass
 
     @property
     @abstractmethod
-    def tables(self) -> list:
-        pass
+    def staff(self) -> list: pass
 
     @property
     @abstractmethod
-    def staff(self) -> list:
-        pass
-
-    @property
-    @abstractmethod
-    def clock(self):
-        pass
+    def clock(self): pass
 
     @abstractmethod
-    def get_staff_by_type(self, staff_type):
-        pass
+    def get_staff_by_type(self, staff_type): pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  UI CLASS
-#
 #  [S] GameUI has one reason to change: how the game's screens look.
-#      All print/display logic lives here — nothing else in the system
-#      does any screen rendering.
-#
-#      The former ChefUI, WaiterUI, CashierUI, and LayoutUI were all pure
-#      collections of static print methods with no independent state or
-#      lifecycle. Splitting them gave the illusion of SRP but actually
-#      fragmented a single concern (screen rendering) across four classes.
-#      Merging them respects SRP at the right level of granularity:
-#      one class, one reason to change — the look of the game UI.
 # ─────────────────────────────────────────────────────────────────────────────
 
 class GameUI:
-    """All screen rendering for the game. Changes only when the UI changes."""  # [S]
-
-    # ── Shared layout ────────────────────────────────────────────────────────
+    """All screen rendering for the game."""  # [S]
 
     @staticmethod
     def clear():
@@ -218,7 +185,7 @@ class GameUI:
     @staticmethod
     def show_arrival(group, waiter_name: str):
         title = "Ma'am" if group.is_vip else "Sir"
-        vip = "⭐VIP " if group.is_vip else ""
+        vip   = "⭐VIP " if group.is_vip else ""
         print(f"  🚶 Group arrived: {vip}{group.leader_name} ({group.size})")
         print(f"  [{waiter_name}] Welcome, {title} {group.leader_name}!\n")
 
@@ -234,7 +201,8 @@ class GameUI:
             else:
                 marker = "✅ available"
                 valid.append(str(t.table_number))
-            print(f"  [{t.table_number}] Table {t.table_number} (cap {t.capacity}) — {marker}")
+            print(f"  [{t.table_number}] Table {t.table_number} "
+                  f"(cap {t.capacity}) — {marker}")
         return valid
 
     # ── Cashier screens ──────────────────────────────────────────────────────
@@ -251,13 +219,14 @@ class GameUI:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CHALLENGE BUILDER
+#  CHALLENGE BUILDERS
 # ─────────────────────────────────────────────────────────────────────────────
 
 class StandardChallengeBuilder(IChallengeBuilder):
-    """Standard multiple-choice distractor builder."""
+    """Standard multiple-choice distractor builder."""  # [O]
 
-    def build_pizza_options(self, correct_pizza: str, all_pizzas: list, num_choices: int) -> tuple:
+    def build_pizza_options(self, correct_pizza: str, all_pizzas: list,
+                            num_choices: int) -> tuple:
         wrong = [p for p in all_pizzas if p != correct_pizza]
         random.shuffle(wrong)
         options = wrong[:num_choices - 1] + [correct_pizza]
@@ -267,7 +236,6 @@ class StandardChallengeBuilder(IChallengeBuilder):
     def build_change_options(self, correct_change: int) -> tuple:
         if correct_change == 0:
             return ["No change — $0"], 0
-
         offsets = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 7, 10]
         wrong: set = set()
         for delta in random.sample(offsets, len(offsets)):
@@ -280,29 +248,26 @@ class StandardChallengeBuilder(IChallengeBuilder):
             if len(wrong) >= 2:
                 break
             wrong.add(fallback)
-
         options = [f"${x}" for x in list(wrong)[:2]] + [f"${correct_change}"]
         random.shuffle(options)
         return options, options.index(f"${correct_change}")
 
 
-# [O] Second IChallengeBuilder — easier distractor set for beginner/training mode.
-#     Swap into GameSetup instead of StandardChallengeBuilder without touching anything else.
 class EasyChallengeBuilder(IChallengeBuilder):
     """Beginner-friendly builder: only 1 wrong option, predictable layout."""  # [O]
 
-    def build_pizza_options(self, correct_pizza: str, all_pizzas: list, num_choices: int) -> tuple:
+    def build_pizza_options(self, correct_pizza: str, all_pizzas: list,
+                            num_choices: int) -> tuple:
         wrong = [p for p in all_pizzas if p != correct_pizza]
         random.shuffle(wrong)
-        options = wrong[:1] + [correct_pizza]          # always only 1 distractor
+        options = wrong[:1] + [correct_pizza]
         return options, options.index(correct_pizza)
 
     def build_change_options(self, correct_change: int) -> tuple:
         if correct_change == 0:
             return ["No change — $0"], 0
-        wrong = correct_change + 5                     # one fixed, obvious wrong answer
-        options = [f"${wrong}", f"${correct_change}"]
-        return options, 1                              # correct is always index 1
+        options = [f"${correct_change + 5}", f"${correct_change}"]
+        return options, 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -333,7 +298,8 @@ class ScoreSystem:
     """Scoring calculations only. Changes only when the scoring formula changes."""  # [S]
 
     @staticmethod
-    def time_bonus(elapsed: float, base: int = 5, max_bonus: int = 5, limit: int = 6) -> int:
+    def time_bonus(elapsed: float, base: int = 5, max_bonus: int = 5,
+                   limit: int = 6) -> int:
         ratio = 1.0 if elapsed <= 1 else max(0.0, 1 - ((elapsed - 1) / (limit - 1)))
         return base + int(max_bonus * ratio)
 
@@ -381,43 +347,51 @@ class NameTag:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  STAFF CLASSES
+#  BASE STAFF
 # ─────────────────────────────────────────────────────────────────────────────
 
-class BaseStaff(IStaff):
-    """Minimal shared staff behaviour: identity and busy state only."""  # [S] [I]
+class BaseStaff(IStaff, IBusyTrackable):
+    """
+    Identity + busy-state management only.
+    [S]  One reason to change: shared staff lifecycle.
+    [I]  Implements both IStaff and IBusyTrackable explicitly — nothing extra forced.
+    """
 
     def __init__(self, name: str, role: str):
         self._name_tag = NameTag(name, role)
-        self._is_busy = False
+        self._is_busy  = False
+
+    # ── IStaff ────────────────────────────────────────────────────────────────
+    @property
+    def name(self) -> str:         return self._name_tag.name
 
     @property
-    def name(self) -> str: return self._name_tag.name
-
-    @property
-    def role(self) -> str: return self._name_tag.role
+    def role(self) -> str:         return self._name_tag.role
 
     @property
     def name_tag(self) -> NameTag: return self._name_tag
 
+    def introduce(self) -> str:    return self._name_tag.greet()
+
+    # ── IBusyTrackable ────────────────────────────────────────────────────────
     @property
-    def is_busy(self) -> bool: return self._is_busy
+    def is_busy(self) -> bool:     return self._is_busy
 
-    def reset_busy(self) -> None: self._is_busy = False
-
-    def introduce(self) -> str: return self._name_tag.greet()
+    def reset_busy(self) -> None:  self._is_busy = False
 
     def __str__(self) -> str:
-        return f"{self._name_tag.display()} ({'busy' if self._is_busy else 'available'})"
+        state = "busy" if self._is_busy else "available"
+        return f"{self._name_tag.display()} ({state})"
 
 
-# [O] Second direct IStaff subclass — does NOT go through BaseStaff.
-#     Represents a temporary/guest worker: no NameTag, no busy-state tracking.
-#     Proves IStaff is a real reusable contract, not just a BaseStaff wrapper.
-# [L] name, role, introduce(), reset_busy() all honour the IStaff contract —
-#     anywhere an IStaff is expected, GuestStaff is a safe drop-in.
 class GuestStaff(IStaff):
-    """Lightweight temporary staff — direct IStaff implementor, no busy-state overhead."""  # [S]
+    """
+    Lightweight temporary staff — implements IStaff only.
+    [I]  Does NOT implement IBusyTrackable because guests have no busy-state lifecycle.
+         The old no-op reset_busy() stub is gone — ISP respected.
+    [L]  name, role, introduce() honour the IStaff contract everywhere IStaff is expected.
+    [S]  One purpose: represent a transient / covering worker.
+    """
 
     def __init__(self, name: str, role: str):
         self._name = name
@@ -429,56 +403,53 @@ class GuestStaff(IStaff):
     @property
     def role(self) -> str: return self._role
 
-    # [L] introduce() returns a string — same contract as BaseStaff.introduce().
     def introduce(self) -> str:
         return f"[{self._role}] {self._name}: Hi, I'm covering today!"
 
-    # [L] reset_busy() is a no-op here — GuestStaff has no busy state to clear,
-    #     but the contract is still honoured (callable, returns None).
-    def reset_busy(self) -> None:
-        pass
-
     def __str__(self) -> str:
         return f"[{self._role}] {self._name} (guest)"
-    
-set_istaff = [
-    GuestStaff, BaseStaff
-]
 
 
-def istaff(istaff: IStaff):
-    istaff.reset_busy
+# ─────────────────────────────────────────────────────────────────────────────
+#  ABSTRACT COOK  [DRY]  [S]  [O]
+#
+#  cook() logic was duplicated verbatim in Chef and TraineeCook.
+#  The only behavioural difference is _cook_multiplier and the activate_duty label.
+#  Template-method pattern: cook() calls _multiplier (hook) so subclasses
+#  override a single property instead of a 30-line method.
+# ─────────────────────────────────────────────────────────────────────────────
 
-
-istaff(set_istaff)
-
-
-class Chef(BaseStaff, ICook):
-    """Cooking interaction only."""  # [S]
+class AbstractCook(BaseStaff, ICook):
+    """
+    Shared cook() implementation via Template Method pattern.
+    [DRY] Eliminates the duplicated cook() body from Chef and TraineeCook.
+    [S]   One reason to change: how the cooking mini-game works.
+    [O]   Subclasses extend by overriding _multiplier and activate_duty only.
+    """
 
     def __init__(self, name: str, challenge_builder: IChallengeBuilder):  # [D]
         super().__init__(name, "Chef")
-        self._builder = challenge_builder
-        self._correct_cooks = self._incorrect_cooks = 0
-        self._cook_multiplier = 1.0
+        self._builder          = challenge_builder
+        self._correct_cooks    = 0
+        self._incorrect_cooks  = 0
 
     @property
-    def correct_cooks(self) -> int: return self._correct_cooks
+    def correct_cooks(self) -> int:   return self._correct_cooks
 
     @property
     def incorrect_cooks(self) -> int: return self._incorrect_cooks
 
-    def activate_duty(self) -> str:
-        self._is_busy = True
-        self._cook_multiplier = 1.5
-        return (f"{self.name} is cooking 🍳  "
-                f"[Duty Active: reaction window x{self._cook_multiplier}]")
+    @property
+    @abstractmethod
+    def _multiplier(self) -> float:
+        """Hook: subclass returns its difficulty multiplier."""  # [O] [DRY]
 
+    # ── Template method — shared by all cooks  [DRY] ──────────────────────────
     def cook(self, order, all_pizzas: list, num_choices: int) -> tuple:
         options, correct_idx = self._builder.build_pizza_options(
             order.pizza, all_pizzas, num_choices
         )
-        GameUI.show_cooking(self.name, order, self._cook_multiplier)
+        GameUI.show_cooking(self.name, order, self._multiplier)
         GameUI.print_choices(options)
         print("\n  Press the correct number.")
 
@@ -489,7 +460,7 @@ class Chef(BaseStaff, ICook):
         elapsed, chosen = result
         if chosen == correct_idx:
             self._correct_cooks += 1
-            pts = ScoreSystem.time_bonus(elapsed * self._cook_multiplier)
+            pts = ScoreSystem.time_bonus(elapsed * self._multiplier)
             GameUI.show_cook_result(order, pts)
             time.sleep(1.5)
             return "OK", pts
@@ -504,66 +475,59 @@ class Chef(BaseStaff, ICook):
                 f"Correct: {self._correct_cooks} | Mistakes: {self._incorrect_cooks}")
 
 
-# [O] Second ICook — trainee difficulty multiplier is 1.0 (no time pressure boost).
-#     Substitutable wherever ICook is expected; swap in GameSetup for a training mode.
-# [L] Same cook() signature and return contract as Chef — (status: str, pts: int).
-class TraineeCook(BaseStaff, ICook):
-    """Cooking interaction with no difficulty multiplier — for trainee mode."""  # [S]
+class Chef(AbstractCook):
+    """Full-difficulty chef: x1.5 time multiplier when on duty."""  # [O] [L]
 
     def __init__(self, name: str, challenge_builder: IChallengeBuilder):  # [D]
-        super().__init__(name, "Chef")
-        self._builder         = challenge_builder
-        self._correct_cooks   = self._incorrect_cooks = 0
-        self._cook_multiplier = 1.0                    # no time pressure unlike Chef
+        super().__init__(name, challenge_builder)
+        self._active_multiplier = 1.0
 
     @property
-    def correct_cooks(self) -> int:   return self._correct_cooks
+    def _multiplier(self) -> float: return self._active_multiplier  # [O] hook
+
+    def activate_duty(self) -> str:
+        self._is_busy             = True
+        self._active_multiplier   = 1.5
+        return (f"{self.name} is cooking 🍳  "
+                f"[Duty Active: reaction window x{self._active_multiplier}]")
+
+
+class TraineeCook(AbstractCook):
+    """Trainee chef: no time pressure (multiplier stays 1.0)."""  # [O] [L]
 
     @property
-    def incorrect_cooks(self) -> int: return self._incorrect_cooks
+    def _multiplier(self) -> float: return 1.0  # [O] hook — no penalty
 
     def activate_duty(self) -> str:
         self._is_busy = True
         return f"{self.name} is cooking 🍳  [Trainee Mode: no time multiplier]"
-
-    # [L] Returns ("OK"|"WRONG"|"QUIT", int) — same contract as Chef.cook().
-    def cook(self, order, all_pizzas: list, num_choices: int) -> tuple:
-        options, correct_idx = self._builder.build_pizza_options(
-            order.pizza, all_pizzas, num_choices
-        )
-        GameUI.show_cooking(self.name, order, self._cook_multiplier)
-        GameUI.print_choices(options)
-        print("\n  Press the correct number.")
-
-        result = InputHandler.get_choice(len(options))
-        if result[0] == "QUIT":
-            return "QUIT", 0
-
-        elapsed, chosen = result
-        if chosen == correct_idx:
-            self._correct_cooks += 1
-            pts = ScoreSystem.time_bonus(elapsed)      # no multiplier applied
-            GameUI.show_cook_result(order, pts)
-            time.sleep(1.5)
-            return "OK", pts
-        else:
-            self._incorrect_cooks += 1
-            GameUI.show_wrong_pizza()
-            time.sleep(2)
-            return "WRONG", ScoreSystem.wrong_penalty()
 
     def __str__(self) -> str:
         return (f"{self._name_tag.display()} | Duty: Trainee Cooking | "
                 f"Correct: {self._correct_cooks} | Mistakes: {self._incorrect_cooks}")
 
 
-class Waiter(BaseStaff, ISeater):
-    """Seating and serving interactions only."""  # [S]
+# ─────────────────────────────────────────────────────────────────────────────
+#  ABSTRACT WAITER  [DRY]  [S]  [O]
+#
+#  seat_group() and serve_food() were duplicated verbatim in Waiter and HeadWaiter.
+#  The only difference is _base_seat_bonus and the activate_duty label.
+#  Extract to AbstractWaiter; subclasses override _base_seat_bonus and activate_duty.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AbstractWaiter(BaseStaff, ISeater):
+    """
+    Shared seat_group() / serve_food() via Template Method pattern.
+    [DRY] Eliminates 60+ duplicated lines between Waiter and HeadWaiter.
+    [S]   One reason to change: how seating / serving interactions work.
+    [O]   Subclasses extend by overriding _base_seat_bonus and activate_duty only.
+    """
 
     def __init__(self, name: str):
         super().__init__(name, "Waiter")
-        self._groups_seated = self._groups_served = 0
-        self._seat_bonus = 0
+        self._groups_seated = 0
+        self._groups_served = 0
+        self._seat_bonus    = 0
 
     @property
     def groups_seated(self) -> int: return self._groups_seated
@@ -571,12 +535,12 @@ class Waiter(BaseStaff, ISeater):
     @property
     def groups_served(self) -> int: return self._groups_served
 
-    def activate_duty(self) -> str:
-        self._is_busy = True
-        self._seat_bonus = 3
-        return (f"{self.name} is serving tables 🍽️  "
-                f"[Duty Active: +{self._seat_bonus} pts per action]")
+    @property
+    @abstractmethod
+    def _base_seat_bonus(self) -> int:
+        """Hook: subclass returns its per-action bonus."""  # [O] [DRY]
 
+    # ── Template methods — shared by all waiters  [DRY] ──────────────────────
     def seat_group(self, group, tables: list) -> tuple:
         GameUI.show_arrival(group, self.name)
         valid_keys = GameUI.show_tables(tables, group.size)
@@ -625,99 +589,62 @@ class Waiter(BaseStaff, ISeater):
                 f"Seated: {self._groups_seated} | Served: {self._groups_served}")
 
 
-# [O] Second ISeater — higher seat/serve bonus, reflects seniority.
-#     Substitutable wherever ISeater is expected; swap in for a VIP-shift scenario.
-# [L] seat_group() and serve_food() return the same tuple contracts as Waiter.
-class HeadWaiter(BaseStaff, ISeater):
-    """Senior seating/serving with higher point bonuses."""  # [S]
-
-    def __init__(self, name: str):
-        super().__init__(name, "Waiter")
-        self._groups_seated = self._groups_served = 0
-        self._seat_bonus = 0
+class Waiter(AbstractWaiter):
+    """Standard waiter: +3 pts per action on duty."""  # [O] [L]
 
     @property
-    def groups_seated(self) -> int: return self._groups_seated
-
-    @property
-    def groups_served(self) -> int: return self._groups_served
+    def _base_seat_bonus(self) -> int: return 3  # [O] hook
 
     def activate_duty(self) -> str:
         self._is_busy    = True
-        self._seat_bonus = 6               # double the regular Waiter bonus
+        self._seat_bonus = self._base_seat_bonus
+        return (f"{self.name} is serving tables 🍽️  "
+                f"[Duty Active: +{self._seat_bonus} pts per action]")
+
+
+class HeadWaiter(AbstractWaiter):
+    """Senior waiter: +6 pts per action on duty (double bonus)."""  # [O] [L]
+
+    @property
+    def _base_seat_bonus(self) -> int: return 6  # [O] hook — higher tier
+
+    def activate_duty(self) -> str:
+        self._is_busy    = True
+        self._seat_bonus = self._base_seat_bonus
         return (f"{self.name} is heading the floor 🍽️⭐  "
                 f"[Head Waiter: +{self._seat_bonus} pts per action]")
-
-    # [L] Returns ("OK"|"WAIT"|"WRONG_TABLE"|"QUIT", table|None, int) — same as Waiter.
-    def seat_group(self, group, tables: list) -> tuple:
-        GameUI.show_arrival(group, self.name)
-        valid_keys = GameUI.show_tables(tables, group.size)
-
-        if not valid_keys:
-            print("  ❌ No available tables!\n")
-            time.sleep(1.5)
-            return "WAIT", None, 0
-
-        result = InputHandler.get_choice(len(tables))
-        if result[0] == "QUIT":
-            return "QUIT", None, 0
-
-        elapsed, chosen = result
-        chosen_table = tables[chosen]
-
-        if str(chosen_table.table_number) not in valid_keys:
-            print(f"\n  ❌ Wrong table! (-15 pts)\n")
-            time.sleep(1.5)
-            return "WRONG_TABLE", None, ScoreSystem.wrong_penalty()
-
-        chosen_table.seat(group)
-        self._groups_seated += 1
-        pts = ScoreSystem.time_bonus(elapsed) + self._seat_bonus
-        print(f"\n  ✅ Seated at Table {chosen_table.table_number}! (+{pts} pts)\n")
-        time.sleep(1.5)
-        return "OK", chosen_table, pts
-
-    # [L] Returns ("OK"|"QUIT", int) — same as Waiter.serve_food().
-    def serve_food(self, group) -> tuple:
-        print(f"  🍕  {group.order.pizza} x{group.order.quantity} is ready!")
-        print(f"  Press [S] to serve Table {group.table.table_number}.")
-        start = time.time()
-        while True:
-            k = input("  > ").strip().lower()
-            if k == "s":
-                self._groups_served += 1
-                pts = ScoreSystem.time_bonus(time.time() - start) + self._seat_bonus
-                print(f"\n  ✅  Served to Table {group.table.table_number}! (+{pts} pts)\n")
-                time.sleep(1.5)
-                return "OK", pts
-            elif k == "q":
-                return "QUIT", 0
 
     def __str__(self) -> str:
         return (f"{self._name_tag.display()} | Duty: Head Waiter | "
                 f"Seated: {self._groups_seated} | Served: {self._groups_served}")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  CASHIER / SELF-CHECKOUT
+# ─────────────────────────────────────────────────────────────────────────────
+
 class Cashier(BaseStaff, IPaymentCollector):
     """Payment collection interaction only."""  # [S]
 
     def __init__(self, name: str, challenge_builder: IChallengeBuilder):  # [D]
         super().__init__(name, "Cashier")
-        self._builder = challenge_builder
-        self._total_collected = self._correct_change = self._wrong_change = 0
-        self._change_bonus = 0
+        self._builder         = challenge_builder
+        self._total_collected = 0
+        self._correct_change  = 0
+        self._wrong_change    = 0
+        self._change_bonus    = 0
 
     @property
     def total_collected(self) -> int: return self._total_collected
 
     @property
-    def correct_change(self) -> int: return self._correct_change
+    def correct_change(self) -> int:  return self._correct_change
 
     @property
-    def wrong_change(self) -> int: return self._wrong_change
+    def wrong_change(self) -> int:    return self._wrong_change
 
     def activate_duty(self) -> str:
-        self._is_busy = True
+        self._is_busy      = True
         self._change_bonus = 2
         return (f"{self.name} is at the register 💰  "
                 f"[Duty Active: +{self._change_bonus} pts per correct change]")
@@ -725,7 +652,6 @@ class Cashier(BaseStaff, IPaymentCollector):
     def collect_payment(self, group) -> tuple:
         bill = group.order.total_price
         paid = group.order.amount_paid
-
         GameUI.show_payment(group)
 
         while True:
@@ -769,11 +695,10 @@ class Cashier(BaseStaff, IPaymentCollector):
                 f"Correct: {self._correct_change} | Wrong: {self._wrong_change}")
 
 
-# [O] Second IPaymentCollector — automated register, no change quiz, flat pts.
-#     Substitutable wherever IPaymentCollector is expected.
-# [L] collect_payment() returns ("OK"|"QUIT", int) — same contract as Cashier.
 class SelfCheckout(BaseStaff, IPaymentCollector):
-    """Automated payment: auto-collects, no change quiz, awards flat points."""  # [S]
+    """Automated payment: auto-collects, no change quiz, awards flat points."""  # [O] [L] [S]
+
+    _FLAT_REWARD = 3  # [S] [DRY] single source of truth for the flat reward
 
     def __init__(self, name: str):
         super().__init__(name, "Cashier")
@@ -788,9 +713,10 @@ class SelfCheckout(BaseStaff, IPaymentCollector):
 
     def activate_duty(self) -> str:
         self._is_busy = True
-        return f"{self.name} is ready 🤖  [Self-Checkout: auto-collect, flat +3 pts]"
+        return (f"{self.name} is ready 🤖  "
+                f"[Self-Checkout: auto-collect, flat +{self._FLAT_REWARD} pts]")
 
-    # [L] Returns ("OK"|"QUIT", int) — same contract as Cashier.collect_payment().
+    # [L] Returns ("OK"|"QUIT", int) — same contract as Cashier.collect_payment()
     def collect_payment(self, group) -> tuple:
         GameUI.show_payment(group)
         print("  🤖  Self-checkout: processing payment automatically...\n")
@@ -800,13 +726,15 @@ class SelfCheckout(BaseStaff, IPaymentCollector):
             return "QUIT", 0
         self._total_collected += group.order.amount_paid
         self._transactions    += 1
-        print(f"\n  ✅  Payment processed! (+3 pts) — No change quiz for self-checkout.\n")
+        print(f"\n  ✅  Payment processed! (+{self._FLAT_REWARD} pts)"
+              f" — No change quiz for self-checkout.\n")
         time.sleep(1.5)
-        return "OK", 3                     # flat reward, no tip, no change challenge
+        return "OK", self._FLAT_REWARD
 
     def __str__(self) -> str:
         return (f"{self._name_tag.display()} | Duty: Self-Checkout | "
-                f"Collected: ${self._total_collected} | Transactions: {self._transactions}")
+                f"Collected: ${self._total_collected} | "
+                f"Transactions: {self._transactions}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -818,7 +746,7 @@ class Order:
 
     PIZZA_PRICES = {
         "Margherita": 8, "Pepperoni": 10, "Hawaiian": 9,
-        "Veggie": 7, "BBQ Chicken": 11, "Supreme": 12,
+        "Veggie": 7,     "BBQ Chicken": 11, "Supreme": 12,
     }
 
     def __init__(self, pizza: str, quantity: int):
@@ -858,8 +786,8 @@ class Customer:
              "Boo", "Birdo", "Lakitu", "Bullet Bill", "Bob-omb"]
 
     def __init__(self, name: str, money: int):
-        self.name_tag = NameTag(name, "Customer")
-        self._money = money
+        self.name_tag  = NameTag(name, "Customer")
+        self._money    = money
 
     @property
     def money(self) -> int: return self._money
@@ -890,6 +818,7 @@ class VipCustomer(Customer):
         super().__init__(name, money)
         self.name_tag.role = "VipCustomer"
 
+    # [L] Overrides tip_amount — same signature and semantics, higher values
     def tip_amount(self, elapsed_time: float = 0) -> int:
         if elapsed_time < 2:   return random.randint(8, 12)
         elif elapsed_time < 5: return random.randint(5, 8)
@@ -909,28 +838,29 @@ class Group:
         self._table  = None
 
     @property
-    def leader_name(self) -> str:  return self._leader.name_tag.name
+    def leader_name(self) -> str: return self._leader.name_tag.name
 
     @property
-    def is_vip(self) -> bool:      return isinstance(self._leader, VipCustomer)
+    def is_vip(self) -> bool:     return isinstance(self._leader, VipCustomer)
 
     @property
-    def size(self) -> int:         return self._size
+    def size(self) -> int:        return self._size
 
     @property
-    def order(self) -> Order:      return self._order
+    def order(self) -> Order:     return self._order
 
     @property
-    def table(self):               return self._table
+    def table(self):              return self._table
 
     @table.setter
-    def table(self, t):            self._table = t
+    def table(self, t):           self._table = t
 
     def tip(self, elapsed_time: float = 0) -> int:
         return self._leader.tip_amount(elapsed_time)
 
     def __str__(self) -> str:
-        return f"Group of {self._size} | Leader: {self.leader_name} | Order: {self._order}"
+        return (f"Group of {self._size} | "
+                f"Leader: {self.leader_name} | Order: {self._order}")
 
 
 class Table:
@@ -942,10 +872,10 @@ class Table:
         self._current_group = None
 
     @property
-    def table_number(self) -> int:   return self._table_number
+    def table_number(self) -> int:  return self._table_number
 
     @property
-    def capacity(self) -> int:       return self._capacity
+    def capacity(self) -> int:      return self._capacity
 
     @capacity.setter
     def capacity(self, value: int):
@@ -954,10 +884,10 @@ class Table:
         self._capacity = value
 
     @property
-    def is_occupied(self) -> bool:   return self._current_group is not None
+    def is_occupied(self) -> bool:  return self._current_group is not None
 
     @property
-    def is_available(self) -> bool:  return self._current_group is None
+    def is_available(self) -> bool: return self._current_group is None
 
     def seat(self, group: Group):
         self._current_group = group
@@ -972,41 +902,43 @@ class Table:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  DIFFICULTY CONFIG
+#  DIFFICULTY CONFIGS
 # ─────────────────────────────────────────────────────────────────────────────
 
-class StandardDifficultyConfig(IDifficultyConfig):
-    """Standard 3-tier difficulty. Extend IDifficultyConfig to add new curves."""
+class BaseDifficultyConfig(IDifficultyConfig):
+    """
+    [DRY] Shared for_day() / available_days() logic using a _LEVELS dict hook.
+    Subclasses only provide their own _LEVELS — no method duplication.
+    [O]   Open for new curves by subclassing and overriding _LEVELS.
+    """
 
-    _LEVELS = {
-        1: {"label": "⭐  EASY",    "choices": 3, "gap": 5},
-        2: {"label": "⭐⭐  MEDIUM", "choices": 4, "gap": 4},
-        3: {"label": "⭐⭐⭐  HARD", "choices": 5, "gap": 3},
-    }
+    _LEVELS: dict = {}  # hook — subclass overrides this class attribute
 
     def for_day(self, day: int) -> dict:
-        return self._LEVELS[min(day, 3)]
+        return self._LEVELS[min(day, max(self._LEVELS))]
 
     def available_days(self) -> list:
         return list(self._LEVELS.keys())
 
 
-# [O] Second IDifficultyConfig — hard from day 1, shorter gaps, more choices.
-#     Swap into GameSetup for a rush-hour mode without touching any other class.
-class RushHourDifficultyConfig(IDifficultyConfig):
+class StandardDifficultyConfig(BaseDifficultyConfig):
+    """Standard 3-tier difficulty curve."""  # [O]
+
+    _LEVELS = {
+        1: {"label": "⭐  EASY",     "choices": 3, "gap": 5},
+        2: {"label": "⭐⭐  MEDIUM",  "choices": 4, "gap": 4},
+        3: {"label": "⭐⭐⭐  HARD",  "choices": 5, "gap": 3},
+    }
+
+
+class RushHourDifficultyConfig(BaseDifficultyConfig):
     """Hard-from-day-one difficulty curve for rush-hour mode."""  # [O]
 
     _LEVELS = {
-        1: {"label": "🔥  RUSH EASY",   "choices": 4, "gap": 3},
-        2: {"label": "🔥🔥  RUSH MED",  "choices": 5, "gap": 2},
-        3: {"label": "🔥🔥🔥  RUSH MAX","choices": 6, "gap": 1},
+        1: {"label": "🔥  RUSH EASY",    "choices": 4, "gap": 3},
+        2: {"label": "🔥🔥  RUSH MED",   "choices": 5, "gap": 2},
+        3: {"label": "🔥🔥🔥  RUSH MAX", "choices": 6, "gap": 1},
     }
-
-    def for_day(self, day: int) -> dict:
-        return self._LEVELS[min(day, 3)]
-
-    def available_days(self) -> list:
-        return list(self._LEVELS.keys())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1016,19 +948,26 @@ class RushHourDifficultyConfig(IDifficultyConfig):
 class RestaurantClock:
     """Game-time calculation and phase labelling only."""  # [S]
 
+    _PHASE_MAP = [          # [DRY] single source of truth for phase boundaries
+        (5,  12, "MORNING 🌅"),
+        (12, 17, "AFTERNOON ☀️"),
+        (17, 20, "EVENING 🌆"),
+    ]
+
     def __init__(self, start_hour: int = 7):
         self._dilation   = 360
         self._start_real = time.time()
         self._offset     = start_hour * 3600
 
     def get_game_time(self) -> tuple:
-        total = int(((time.time() - self._start_real) * self._dilation + self._offset) // 60)
+        total = int(((time.time() - self._start_real) * self._dilation
+                     + self._offset) // 60)
         return (total // 60) % 24, total % 60
 
     def get_phase(self, hour: int) -> str:
-        if 5  <= hour < 12: return "MORNING 🌅"
-        if 12 <= hour < 17: return "AFTERNOON ☀️"
-        if 17 <= hour < 20: return "EVENING 🌆"
+        for start, end, label in self._PHASE_MAP:
+            if start <= hour < end:
+                return label
         return "NIGHT 🌙"
 
     def time_str(self) -> str:
@@ -1037,60 +976,55 @@ class RestaurantClock:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  GROUP FACTORY
+#  GROUP FACTORIES
 # ─────────────────────────────────────────────────────────────────────────────
 
-class GroupFactory(IGroupFactory):
-    """Random customer group creation only."""  # [S]
+class BaseGroupFactory(IGroupFactory):
+    """
+    [DRY] Shared table/menu storage and set_tables() for all factories.
+    Subclasses only override create() and _make_leader().
+    [O]   Open for new group types by subclassing.
+    """
 
     def __init__(self, tables: list, menu: list):
         self._tables = tables
         self._menu   = menu
-
-    def create(self) -> Group:
-        is_vip  = random.random() < 0.2
-        leader  = self._make_leader(is_vip)
-        max_cap = max(t.capacity for t in self._tables)
-        pizza   = random.choice(self._menu)
-        return Group(
-            leader,
-            random.randint(1, max_cap),
-            Order(pizza, random.randint(1, max_cap))
-        )
 
     def set_tables(self, tables: list) -> None:
         self._tables = tables
 
-    def _make_leader(self, is_vip: bool):
-        if is_vip:
-            return VipCustomer(random.choice(VipCustomer.NAMES), random.randint(80, 150))
-        return Customer(random.choice(Customer.NAMES), random.randint(15, 50))
+    @property
+    def _max_cap(self) -> int:          # [DRY] computed once, used in create()
+        return max(t.capacity for t in self._tables)
 
 
-# [O] Second IGroupFactory — spawns VIP-only groups with larger party sizes.
-#     Swap into GameSetup for a VIP night event without touching any other class.
-# [L] create() returns a Group — same contract as GroupFactory.create().
-class VipNightFactory(IGroupFactory):
-    """Spawns exclusively VIP groups with larger party sizes."""  # [S] [O]
+class GroupFactory(BaseGroupFactory):
+    """Random mixed-group factory: 20 % chance of VIP leader."""  # [O]
 
-    def __init__(self, tables: list, menu: list):
-        self._tables = tables
-        self._menu   = menu
-
-    # [L] Returns Group — same contract as GroupFactory.create().
     def create(self) -> Group:
-        leader  = VipCustomer(random.choice(VipCustomer.NAMES), random.randint(100, 200))
-        max_cap = max(t.capacity for t in self._tables)
-        pizza   = random.choice(self._menu)
-        size    = random.randint(max_cap // 2, max_cap)  # larger groups on VIP night
+        is_vip = random.random() < 0.2
+        leader = (VipCustomer(random.choice(VipCustomer.NAMES), random.randint(80, 150))
+                  if is_vip else
+                  Customer(random.choice(Customer.NAMES), random.randint(15, 50)))
+        pizza  = random.choice(self._menu)
+        return Group(leader,
+                     random.randint(1, self._max_cap),
+                     Order(pizza, random.randint(1, self._max_cap)))
+
+
+class VipNightFactory(BaseGroupFactory):
+    """Spawns exclusively VIP groups with larger party sizes."""  # [O] [L]
+
+    def create(self) -> Group:          # [L] same return type as GroupFactory
+        leader = VipCustomer(random.choice(VipCustomer.NAMES),
+                             random.randint(100, 200))
+        pizza  = random.choice(self._menu)
+        size   = random.randint(self._max_cap // 2, self._max_cap)
         return Group(leader, size, Order(pizza, size))
 
-    def set_tables(self, tables: list) -> None:
-        self._tables = tables
-
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SHIFT SUMMARY
+#  SHIFT SUMMARIES
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ShiftSummary(ISummaryDisplay):
@@ -1119,8 +1053,6 @@ class ShiftSummary(ISummaryDisplay):
         print("▓" * 55)
 
 
-# [O] Second ISummaryDisplay — compact one-liner output, no ENTER pause.
-#     Swap into GameSetup for a fast/debug mode without touching any other class.
 class QuickSummary(ISummaryDisplay):
     """Compact summary: single line per event, no pause."""  # [O]
 
@@ -1128,7 +1060,8 @@ class QuickSummary(ISummaryDisplay):
         print(f"\n  📋  Day {day} done — Served: {served} | Score: {score}\n")
 
     def show_shift_end(self, score: int, served: int, staff: list) -> None:
-        print(f"\n  🏁  Shift over — Score: {score} | Served: {served} | Staff: {len(staff)}\n")
+        print(f"\n  🏁  Shift over — Score: {score} | "
+              f"Served: {served} | Staff: {len(staff)}\n")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1139,8 +1072,8 @@ class BranchRegistry(IBranchRepository):
     """Staff, table, and menu registration only."""  # [S]
 
     def __init__(self, name: str, clock: RestaurantClock):
-        self._name  = name
-        self._clock = clock
+        self._name:   str  = name
+        self._clock         = clock
         self._menu:   list = []
         self._tables: list = []
         self._staff:  list = []
@@ -1158,15 +1091,15 @@ class BranchRegistry(IBranchRepository):
     def staff(self) -> list:  return list(self._staff)
 
     @property
-    def clock(self) -> RestaurantClock: return self._clock
+    def clock(self):          return self._clock
 
     def set_menu(self, items: list):
         if not items or not isinstance(items, list):
             raise ValueError("Menu must be a non-empty list.")
         self._menu = items
 
-    def add_table(self, table: Table):   self._tables.append(table)
-    def add_staff(self, member: IStaff): self._staff.append(member)
+    def add_table(self, table: Table):    self._tables.append(table)
+    def add_staff(self, member: IStaff):  self._staff.append(member)
 
     def get_staff_by_type(self, staff_type):
         return next((s for s in self._staff if isinstance(s, staff_type)), None)
@@ -1184,14 +1117,15 @@ class BranchRegistry(IBranchRepository):
         print()
 
 
-# [O] Second IBranchRepository — a frozen snapshot built from an existing registry.
-#     Useful for replays, testing, or read-only inspection without risk of mutation.
-#     Swap anywhere IBranchRepository is accepted; GameEngine will never know the difference.
-# [L] All five properties and get_staff_by_type() honour the same contracts as BranchRegistry.
 class ReadOnlyBranch(IBranchRepository):
-    """Frozen branch snapshot — read-only, built from an existing registry."""  # [O] [L]
+    """
+    Frozen branch snapshot — read-only, built from an existing registry.
+    [O]  Useful for previews, replays, or testing without mutation risk.
+    [L]  All five properties + get_staff_by_type() honour IBranchRepository's contract.
+    [D]  Constructor accepts IBranchRepository — not the concrete BranchRegistry.
+    """
 
-    def __init__(self, source: IBranchRepository):  # [D] accepts the abstraction, not BranchRegistry
+    def __init__(self, source: IBranchRepository):  # [D]
         self._name   = source.name
         self._menu   = list(source.menu)
         self._tables = list(source.tables)
@@ -1213,7 +1147,6 @@ class ReadOnlyBranch(IBranchRepository):
     @property
     def clock(self):          return self._clock
 
-    # [L] Same lookup behaviour as BranchRegistry.get_staff_by_type().
     def get_staff_by_type(self, staff_type):
         return next((s for s in self._staff if isinstance(s, staff_type)), None)
 
@@ -1231,33 +1164,57 @@ class ReadOnlyBranch(IBranchRepository):
 
 
 class BranchState:
-    """Mutable game state (score, served, day, cash) only."""  # [S]
+    """
+    Mutable game state (score, served, day, cash) only.
+    [S]  One reason to change: what constitutes game state.
+    [S]  All attributes are now private with validated properties — encapsulation.
+    """
 
     def __init__(self):
-        self.score:           int = 0
-        self.served:          int = 0
-        self.day:             int = 1
-        self.total_collected: int = 0
+        self._score:           int = 0
+        self._served:          int = 0
+        self._day:             int = 1
+        self._total_collected: int = 0
+
+    # ── Validated properties  [S] ─────────────────────────────────────────────
+    @property
+    def score(self) -> int: return self._score
+
+    @property
+    def served(self) -> int: return self._served
+
+    @property
+    def day(self) -> int: return self._day
+
+    @day.setter
+    def day(self, value: int):
+        if value < 1:
+            raise ValueError("Day must be at least 1.")
+        self._day = value
+
+    @property
+    def total_collected(self) -> int: return self._total_collected
 
     def add_score(self, pts: int):
-        self.score = max(0, self.score + pts)
+        self._score = max(0, self._score + pts)
 
     def record_served(self, amount_paid: int):
-        self.served          += 1
-        self.total_collected += amount_paid
+        self._served          += 1
+        self._total_collected += amount_paid
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  GAME ENGINE
+#
+#  [S]  One reason to change: how turns are sequenced.
+#  [O]  All collaborators are injected — extend by swapping implementations.
+#  [D]  Every dependency typed as an abstraction (I* interface).
+#  [DRY] _run_duty_phase() eliminates the 4x repeated
+#        (show_header → activate_duty → call → reset_busy → handle) pattern.
 # ─────────────────────────────────────────────────────────────────────────────
 
 class GameEngine:
-    """
-    Game-loop orchestration only.
-    [S] One reason to change: how turns are sequenced.
-    [O] Extend by injecting new implementations — never modify this class.
-    [D] All collaborators injected as abstractions.
-    """
+    """Game-loop orchestration only."""  # [S]
 
     def __init__(
         self,
@@ -1267,22 +1224,22 @@ class GameEngine:
         factory:    IGroupFactory,
         summary:    ISummaryDisplay,
     ):
-        self._registry   = registry
+        self._registry   = registry   # [D]
         self._state      = state
-        self._difficulty = difficulty
-        self._factory    = factory
-        self._summary    = summary
+        self._difficulty = difficulty # [D]
+        self._factory    = factory    # [D]
+        self._summary    = summary    # [D]
 
         self._waiter:  ISeater           = None
         self._chef:    ICook             = None
         self._cashier: IPaymentCollector = None
 
     def run(self):
-        # [D] Look up by interface, not by concrete class — HeadWaiter, TraineeCook,
-        #     and SelfCheckout are found just as correctly as Waiter, Chef, Cashier.
-        self._waiter  = self._registry.get_staff_by_type(ISeater)            # [D]
-        self._chef    = self._registry.get_staff_by_type(ICook)              # [D]
-        self._cashier = self._registry.get_staff_by_type(IPaymentCollector)  # [D]
+        # [D] Look up by interface — HeadWaiter, TraineeCook, SelfCheckout are found
+        #     just as correctly as Waiter, Chef, Cashier.
+        self._waiter  = self._registry.get_staff_by_type(ISeater)
+        self._chef    = self._registry.get_staff_by_type(ICook)
+        self._cashier = self._registry.get_staff_by_type(IPaymentCollector)
 
         if not all([self._waiter, self._chef, self._cashier]):
             print("  ❌  Missing staff! Need an ISeater, ICook, and IPaymentCollector.")
@@ -1290,15 +1247,16 @@ class GameEngine:
 
         self._start_shift()
 
-        while True:
-            if not self._run_turn():
-                break
+        while self._run_turn():
+            pass
 
         self._summary.show_shift_end(
             self._state.score,
             self._state.served,
             self._registry.staff,
         )
+
+    # ── Turn helpers ──────────────────────────────────────────────────────────
 
     def _start_shift(self):
         reg = self._registry
@@ -1342,68 +1300,73 @@ class GameEngine:
         self._finalize_turn(group)
         return True
 
+    # ──────────────────────────────────────────────────────────────────────────
+    #  _run_duty_phase: Template Method for every duty interaction  [DRY]
+    #
+    #  Before: _do_seating, _do_cooking, _do_serving, _do_payment each contained
+    #          the same (show_header → activate → call action → reset) skeleton,
+    #          duplicated four times with trivial differences.
+    #
+    #  After:  One method handles the skeleton; callers pass the staff member,
+    #          their role label, and a lambda for the unique action call.
+    # ──────────────────────────────────────────────────────────────────────────
+    def _run_duty_phase(self, staff, role_label: str, action_fn) -> tuple:
+        """
+        Execute one duty phase.
+        [DRY] Eliminates the 4x repeated show_header → activate_duty → action
+              → reset_busy skeleton.
+        Returns the raw tuple from action_fn, or ("QUIT", 0) if the player quits.
+        """
+        self._show_header(staff.name, role_label)
+        print(staff.activate_duty(), "\n")
+        result = action_fn()
+        if isinstance(staff, IBusyTrackable):   # [I] only reset when trackable
+            staff.reset_busy()
+        return result
+
     def _do_seating(self, group) -> bool:
-        self._show_header(self._waiter.name, "WAITER")
-        print(self._waiter.activate_duty(), "\n")
-
-        status, table, pts = self._waiter.seat_group(group, self._registry.tables)
-        self._waiter.reset_busy()
-
-        if status == "QUIT":
-            return False
+        status, table, pts = self._run_duty_phase(
+            self._waiter, "WAITER",
+            lambda: self._waiter.seat_group(group, self._registry.tables)
+        )
         self._state.add_score(pts)
-        return True
+        return status != "QUIT"
 
     def _do_cooking(self, group) -> bool:
         diff = self._difficulty.for_day(self._state.day)
-        self._show_header(self._chef.name, "CHEF")
-        print(self._chef.activate_duty(), "\n")
-
-        status, pts = self._chef.cook(group.order, self._registry.menu, diff["choices"])
-        self._chef.reset_busy()
-
+        status, pts = self._run_duty_phase(
+            self._chef, "CHEF",
+            lambda: self._chef.cook(group.order, self._registry.menu, diff["choices"])
+        )
+        self._state.add_score(pts)
         if status == "QUIT":
             return False
         if status == "WRONG":
-            self._state.add_score(pts)
             group.table.clear()
-            return True
-        self._state.add_score(pts)
         return True
 
     def _do_serving(self, group) -> bool:
-        self._show_header(self._waiter.name, "WAITER")
-        print(self._waiter.activate_duty(), "\n")
-
-        status, pts = self._waiter.serve_food(group)
-        self._waiter.reset_busy()
-
-        if status == "QUIT":
-            return False
+        status, pts = self._run_duty_phase(
+            self._waiter, "WAITER",
+            lambda: self._waiter.serve_food(group)
+        )
         self._state.add_score(pts)
-        return True
+        return status != "QUIT"
 
     def _do_payment(self, group) -> bool:
-        self._show_header(self._cashier.name, "CASHIER")
-        print(self._cashier.activate_duty(), "\n")
-
-        status, pts = self._cashier.collect_payment(group)
-        self._cashier.reset_busy()
-
-        if status == "QUIT":
-            return False
+        status, pts = self._run_duty_phase(
+            self._cashier, "CASHIER",
+            lambda: self._cashier.collect_payment(group)
+        )
         self._state.add_score(pts)
-        return True
+        return status != "QUIT"
 
     def _finalize_turn(self, group):
         self._state.record_served(group.order.amount_paid)
         group.table.clear()
-
         if self._state.served % 5 == 0:
             self._summary.show_day_end(
-                self._state.day,
-                self._state.served,
-                self._state.score,
+                self._state.day, self._state.served, self._state.score
             )
             self._state.day += 1
 
@@ -1415,29 +1378,17 @@ class GameEngine:
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  GAME SETUP  — Composition Root
-#
-#  Three modes, each using a distinct combination of subclasses so that
-#  every class added to the file actually runs in the game:
-#
-#  NORMAL     — Waiter, Chef, Cashier
-#               StandardChallengeBuilder, StandardDifficultyConfig
-#               GroupFactory, ShiftSummary
-#
-#  TRAINEE    — Waiter, TraineeCook, Cashier          ← TraineeCook
-#               EasyChallengeBuilder                  ← EasyChallengeBuilder
-#               StandardDifficultyConfig, GroupFactory
-#               QuickSummary                          ← QuickSummary
-#
-#  RUSH HOUR  — HeadWaiter, Chef, SelfCheckout        ← HeadWaiter, SelfCheckout
-#               StandardChallengeBuilder
-#               RushHourDifficultyConfig              ← RushHourDifficultyConfig
-#               VipNightFactory                       ← VipNightFactory
-#               ShiftSummary
-#               ReadOnlyBranch for preview screen     ← ReadOnlyBranch
-#               GuestStaff added to registry roster   ← GuestStaff
-
+#  [D] The ONLY place concrete types are assembled — all wiring happens here.
+#  [S] _build_* methods focus on wiring; UI printing is extracted to _preview_branch.
+# ─────────────────────────────────────────────────────────────────────────────
 
 class GameSetup:
+
+    _MENU = ["Margherita", "Pepperoni", "Hawaiian",
+             "Veggie", "BBQ Chicken", "Supreme"]   # [DRY] single definition
+
+    _TABLES = [(1, 2), (2, 4), (3, 5)]             # [DRY] single definition
+
     @staticmethod
     def _pick_mode() -> str:
         print("  Select game mode:\n")
@@ -1453,6 +1404,7 @@ class GameSetup:
 
     @staticmethod
     def _get_staff_names(roles: list) -> list:
+        """Prompt for each role's name, falling back to the supplied default."""
         print("\n  Enter your staff names:\n")
         names = []
         for role, default in roles:
@@ -1460,102 +1412,92 @@ class GameSetup:
             names.append(input().strip() or default)
         return names
 
-    # [O] _build_normal(): wires the original set of classes — unchanged behaviour.
     @staticmethod
-    def _build_normal() -> GameEngine:
-        names = GameSetup._get_staff_names([
-            ("Waiter", "Alex"), ("Chef", "Mario"), ("Cashier", "Birdo")
-        ])
-        waiter_name, chef_name, cashier_name = names
-
-        builder: IChallengeBuilder = StandardChallengeBuilder()
-
-        registry = BranchRegistry("Area 1 Pizzeria", RestaurantClock(start_hour=7))
-        registry.set_menu(["Margherita", "Pepperoni", "Hawaiian",
-                           "Veggie", "BBQ Chicken", "Supreme"])
-        registry.add_staff(Waiter(waiter_name))
-        registry.add_staff(Chef(chef_name, builder))
-        registry.add_staff(Cashier(cashier_name, builder))
-        for num, cap in [(1, 2), (2, 4), (3, 5)]:
+    def _make_branch(branch_name: str, start_hour: int,
+                     staff: list) -> BranchRegistry:
+        """
+        [DRY] Single place that builds a BranchRegistry with the shared menu
+        and shared table layout — prevents repetition across _build_* methods.
+        """
+        registry = BranchRegistry(branch_name, RestaurantClock(start_hour))
+        registry.set_menu(GameSetup._MENU)
+        for num, cap in GameSetup._TABLES:
             registry.add_table(Table(num, cap))
+        for member in staff:
+            registry.add_staff(member)
+        return registry
 
-        return GameEngine(
-            registry,
-            BranchState(),
-            StandardDifficultyConfig(),                          # [O] standard curve
-            GroupFactory(registry.tables, registry.menu),        # [O] mixed groups
-            ShiftSummary(),                                      # [O] full summary
-        )
-
-    # [O] _build_trainee(): wires TraineeCook, EasyChallengeBuilder, QuickSummary.
     @staticmethod
-    def _build_trainee() -> GameEngine:
-        names = GameSetup._get_staff_names([
-            ("Waiter", "Alex"), ("Trainee Cook", "Luigi"), ("Cashier", "Birdo")
-        ])
-        waiter_name, cook_name, cashier_name = names
-
-        easy_builder: IChallengeBuilder = EasyChallengeBuilder()  # [O] easier options
-
-        registry = BranchRegistry("Area 1 Pizzeria — Trainee Shift",
-                                  RestaurantClock(start_hour=7))
-        registry.set_menu(["Margherita", "Pepperoni", "Hawaiian",
-                           "Veggie", "BBQ Chicken", "Supreme"])
-        registry.add_staff(Waiter(waiter_name))
-        registry.add_staff(TraineeCook(cook_name, easy_builder))  # [O] TraineeCook
-        registry.add_staff(Cashier(cashier_name, easy_builder))
-        for num, cap in [(1, 2), (2, 4), (3, 5)]:
-            registry.add_table(Table(num, cap))
-
-        return GameEngine(
-            registry,
-            BranchState(),
-            StandardDifficultyConfig(),
-            GroupFactory(registry.tables, registry.menu),
-            QuickSummary(),                                       # [O] fast summary
-        )
-
-    # [O] _build_rush_hour(): wires HeadWaiter, SelfCheckout, RushHourDifficultyConfig,
-    #     VipNightFactory, ReadOnlyBranch (preview), and GuestStaff (roster display).
-    @staticmethod
-    def _build_rush_hour() -> GameEngine:
-        names = GameSetup._get_staff_names([
-            ("Head Waiter", "Rosa"), ("Chef", "Mario")
-        ])
-        head_waiter_name, chef_name = names
-
-        builder: IChallengeBuilder = StandardChallengeBuilder()
-
-        registry = BranchRegistry("Area 1 Pizzeria — Rush Hour",
-                                  RestaurantClock(start_hour=11))
-        registry.set_menu(["Margherita", "Pepperoni", "Hawaiian",
-                           "Veggie", "BBQ Chicken", "Supreme"])
-        registry.add_staff(HeadWaiter(head_waiter_name))          # [O] HeadWaiter
-        registry.add_staff(Chef(chef_name, builder))
-        registry.add_staff(SelfCheckout("Kiosk-1"))               # [O] SelfCheckout
-        # GuestStaff added to the roster so it appears on the shift intro screen [O]
-        registry.add_staff(GuestStaff("Marco", "Support"))        # [O] GuestStaff
-        for num, cap in [(1, 2), (2, 4), (3, 5)]:
-            registry.add_table(Table(num, cap))
-
-        # ReadOnlyBranch: used to show the branch preview before the shift starts,
-        # so the live registry is never at risk of accidental mutation during display. [O]
-        preview: IBranchRepository = ReadOnlyBranch(registry)     # [O] ReadOnlyBranch
+    def _preview_branch(registry: IBranchRepository) -> None:
+        """[S] Print-only: show a read-only snapshot before the shift begins."""
+        preview: IBranchRepository = ReadOnlyBranch(registry)  # [O] safe snapshot
         GameUI.clear()
         print("═" * 55)
         print(f"  📋  Branch Preview (read-only snapshot)")
         print("═" * 55)
         preview.show_staff()
         preview.show_tables()
-        input("  Press ENTER to continue to name entry...\n")
+        input("  Press ENTER to continue...\n")
 
+    # ── Build methods — each wires a distinct set of concrete classes  [O] ─────
+
+    @staticmethod
+    def _build_normal() -> GameEngine:
+        waiter_name, chef_name, cashier_name = GameSetup._get_staff_names([
+            ("Waiter", "Alex"), ("Chef", "Mario"), ("Cashier", "Birdo")
+        ])
+        builder: IChallengeBuilder = StandardChallengeBuilder()
+        registry = GameSetup._make_branch(
+            "Area 1 Pizzeria", 7,
+            [Waiter(waiter_name), Chef(chef_name, builder), Cashier(cashier_name, builder)]
+        )
         return GameEngine(
-            registry,
-            BranchState(),
-            RushHourDifficultyConfig(),                           # [O] harder curve
-            VipNightFactory(registry.tables, registry.menu),      # [O] VIP-only groups
+            registry, BranchState(),
+            StandardDifficultyConfig(),
+            GroupFactory(registry.tables, registry.menu),
             ShiftSummary(),
         )
+
+    @staticmethod
+    def _build_trainee() -> GameEngine:
+        waiter_name, cook_name, cashier_name = GameSetup._get_staff_names([
+            ("Waiter", "Alex"), ("Trainee Cook", "Luigi"), ("Cashier", "Birdo")
+        ])
+        easy_builder: IChallengeBuilder = EasyChallengeBuilder()  # [O] easier options
+        registry = GameSetup._make_branch(
+            "Area 1 Pizzeria — Trainee Shift", 7,
+            [Waiter(waiter_name), TraineeCook(cook_name, easy_builder),  # [O] TraineeCook
+             Cashier(cashier_name, easy_builder)]
+        )
+        return GameEngine(
+            registry, BranchState(),
+            StandardDifficultyConfig(),
+            GroupFactory(registry.tables, registry.menu),
+            QuickSummary(),                                               # [O] fast summary
+        )
+
+    @staticmethod
+    def _build_rush_hour() -> GameEngine:
+        head_waiter_name, chef_name = GameSetup._get_staff_names([
+            ("Head Waiter", "Rosa"), ("Chef", "Mario")
+        ])
+        builder: IChallengeBuilder = StandardChallengeBuilder()
+        registry = GameSetup._make_branch(
+            "Area 1 Pizzeria — Rush Hour", 11,
+            [HeadWaiter(head_waiter_name),                 # [O] HeadWaiter
+             Chef(chef_name, builder),
+             SelfCheckout("Kiosk-1"),                      # [O] SelfCheckout
+             GuestStaff("Marco", "Support")]               # [O] GuestStaff
+        )
+        GameSetup._preview_branch(registry)                # [S] preview separated
+        return GameEngine(
+            registry, BranchState(),
+            RushHourDifficultyConfig(),                    # [O] harder curve
+            VipNightFactory(registry.tables, registry.menu),  # [O] VIP-only groups
+            ShiftSummary(),
+        )
+
+    # ── Composition root ──────────────────────────────────────────────────────
 
     @staticmethod
     def create_game() -> GameEngine:
@@ -1567,20 +1509,15 @@ class GameSetup:
         print()
 
         mode = GameSetup._pick_mode()
-
         GameUI.clear()
         print("═" * 55)
-        if mode == "1":
-            print("  🍕  NORMAL MODE")
-            print("═" * 55)
-            return GameSetup._build_normal()
-        elif mode == "2":
-            print("  🎓  TRAINEE MODE")
-            print("═" * 55)
-            return GameSetup._build_trainee()
-        else:
-            print("  🔥  RUSH HOUR MODE")
-            print("═" * 55)
-            return GameSetup._build_rush_hour()
 
-
+        _BUILDERS = {
+            "1": ("  🍕  NORMAL MODE",     GameSetup._build_normal),
+            "2": ("  🎓  TRAINEE MODE",    GameSetup._build_trainee),
+            "3": ("  🔥  RUSH HOUR MODE",  GameSetup._build_rush_hour),
+        }
+        label, builder_fn = _BUILDERS[mode]   # [DRY] no if/elif chain
+        print(label)
+        print("═" * 55)
+        return builder_fn()
