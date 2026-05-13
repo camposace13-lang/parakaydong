@@ -1384,13 +1384,14 @@ class GameEngine:
 
 class GameSetup:
 
-    _MENU = ["Margherita", "Pepperoni", "Hawaiian",
-             "Veggie", "BBQ Chicken", "Supreme"]   # [DRY] single definition
+    def __init__(self):
+        self._MENU = [
+            "Margherita", "Pepperoni", "Hawaiian",
+            "Veggie", "BBQ Chicken", "Supreme"
+        ]
+        self._TABLES = [(1, 2), (2, 4), (3, 5)]
 
-    _TABLES = [(1, 2), (2, 4), (3, 5)]             # [DRY] single definition
-
-    @staticmethod
-    def _pick_mode() -> str:
+    def _pick_mode(self) -> str:
         print("  Select game mode:\n")
         print("  [1]  Normal     — standard staff and difficulty")
         print("  [2]  Trainee    — easier challenges, no time multiplier")
@@ -1402,9 +1403,7 @@ class GameSetup:
                 return k
             print("  ⚠️  Enter 1, 2, or 3.")
 
-    @staticmethod
-    def _get_staff_names(roles: list) -> list:
-        """Prompt for each role's name, falling back to the supplied default."""
+    def _get_staff_names(self, roles: list) -> list:
         print("\n  Enter your staff names:\n")
         names = []
         for role, default in roles:
@@ -1412,25 +1411,18 @@ class GameSetup:
             names.append(input().strip() or default)
         return names
 
-    @staticmethod
-    def _make_branch(branch_name: str, start_hour: int,
+    def _make_branch(self, branch_name: str, start_hour: int,
                      staff: list) -> BranchRegistry:
-        """
-        [DRY] Single place that builds a BranchRegistry with the shared menu
-        and shared table layout — prevents repetition across _build_* methods.
-        """
         registry = BranchRegistry(branch_name, RestaurantClock(start_hour))
-        registry.set_menu(GameSetup._MENU)
-        for num, cap in GameSetup._TABLES:
+        registry.set_menu(self._MENU)
+        for num, cap in self._TABLES:
             registry.add_table(Table(num, cap))
         for member in staff:
             registry.add_staff(member)
         return registry
 
-    @staticmethod
-    def _preview_branch(registry: IBranchRepository) -> None:
-        """[S] Print-only: show a read-only snapshot before the shift begins."""
-        preview: IBranchRepository = ReadOnlyBranch(registry)  # [O] safe snapshot
+    def _preview_branch(self, registry: IBranchRepository) -> None:
+        preview: IBranchRepository = ReadOnlyBranch(registry)
         GameUI.clear()
         print("═" * 55)
         print(f"  📋  Branch Preview (read-only snapshot)")
@@ -1439,15 +1431,12 @@ class GameSetup:
         preview.show_tables()
         input("  Press ENTER to continue...\n")
 
-    # ── Build methods — each wires a distinct set of concrete classes  [O] ─────
-
-    @staticmethod
-    def _build_normal() -> GameEngine:
-        waiter_name, chef_name, cashier_name = GameSetup._get_staff_names([
+    def _build_normal(self) -> GameEngine:
+        waiter_name, chef_name, cashier_name = self._get_staff_names([
             ("Waiter", "Alex"), ("Chef", "Mario"), ("Cashier", "Birdo")
         ])
         builder: IChallengeBuilder = StandardChallengeBuilder()
-        registry = GameSetup._make_branch(
+        registry = self._make_branch(
             "Area 1 Pizzeria", 7,
             [Waiter(waiter_name), Chef(chef_name, builder), Cashier(cashier_name, builder)]
         )
@@ -1458,66 +1447,60 @@ class GameSetup:
             ShiftSummary(),
         )
 
-    @staticmethod
-    def _build_trainee() -> GameEngine:
-        waiter_name, cook_name, cashier_name = GameSetup._get_staff_names([
+    def _build_trainee(self) -> GameEngine:
+        waiter_name, cook_name, cashier_name = self._get_staff_names([
             ("Waiter", "Alex"), ("Trainee Cook", "Luigi"), ("Cashier", "Birdo")
         ])
-        easy_builder: IChallengeBuilder = EasyChallengeBuilder()  # [O] easier options
-        registry = GameSetup._make_branch(
+        easy_builder: IChallengeBuilder = EasyChallengeBuilder()
+        registry = self._make_branch(
             "Area 1 Pizzeria — Trainee Shift", 7,
-            [Waiter(waiter_name), TraineeCook(cook_name, easy_builder),  # [O] TraineeCook
+            [Waiter(waiter_name), TraineeCook(cook_name, easy_builder),
              Cashier(cashier_name, easy_builder)]
         )
         return GameEngine(
             registry, BranchState(),
             StandardDifficultyConfig(),
             GroupFactory(registry.tables, registry.menu),
-            QuickSummary(),                                               # [O] fast summary
+            QuickSummary(),
         )
 
-    @staticmethod
-    def _build_rush_hour() -> GameEngine:
-        head_waiter_name, chef_name = GameSetup._get_staff_names([
+    def _build_rush_hour(self) -> GameEngine:
+        head_waiter_name, chef_name = self._get_staff_names([
             ("Head Waiter", "Rosa"), ("Chef", "Mario")
         ])
         builder: IChallengeBuilder = StandardChallengeBuilder()
-        registry = GameSetup._make_branch(
+        registry = self._make_branch(
             "Area 1 Pizzeria — Rush Hour", 11,
-            [HeadWaiter(head_waiter_name),                 # [O] HeadWaiter
+            [HeadWaiter(head_waiter_name),
              Chef(chef_name, builder),
-             SelfCheckout("Kiosk-1"),                      # [O] SelfCheckout
-             GuestStaff("Marco", "Support")]               # [O] GuestStaff
+             SelfCheckout("Kiosk-1"),
+             GuestStaff("Marco", "Support")]
         )
-        GameSetup._preview_branch(registry)                # [S] preview separated
+        self._preview_branch(registry)
         return GameEngine(
             registry, BranchState(),
-            RushHourDifficultyConfig(),                    # [O] harder curve
-            VipNightFactory(registry.tables, registry.menu),  # [O] VIP-only groups
+            RushHourDifficultyConfig(),
+            VipNightFactory(registry.tables, registry.menu),
             ShiftSummary(),
         )
 
-    # ── Composition root ──────────────────────────────────────────────────────
-
-    @staticmethod
-    def create_game() -> GameEngine:
-        """Composition root — the ONLY place concrete types are assembled."""  # [D]
+    def create_game(self) -> GameEngine:
         GameUI.clear()
         print("═" * 55)
         print("  🍕  PIZZA RESTAURANT SIMULATOR")
         print("═" * 55)
         print()
 
-        mode = GameSetup._pick_mode()
+        mode = self._pick_mode()
         GameUI.clear()
         print("═" * 55)
 
         _BUILDERS = {
-            "1": ("  🍕  NORMAL MODE",     GameSetup._build_normal),
-            "2": ("  🎓  TRAINEE MODE",    GameSetup._build_trainee),
-            "3": ("  🔥  RUSH HOUR MODE",  GameSetup._build_rush_hour),
+            "1": ("  🍕  NORMAL MODE",    self._build_normal),
+            "2": ("  🎓  TRAINEE MODE",   self._build_trainee),
+            "3": ("  🔥  RUSH HOUR MODE", self._build_rush_hour),
         }
-        label, builder_fn = _BUILDERS[mode]   # [DRY] no if/elif chain
+        label, builder_fn = _BUILDERS[mode]
         print(label)
         print("═" * 55)
         return builder_fn()
